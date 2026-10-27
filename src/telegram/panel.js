@@ -39,7 +39,7 @@ export function home(s) {
       [b('🔎 اسکنِ همین الان', 'act:scan')],
       [b('📊 نتایجِ آخرین اسکن', 'nav:res'), b('📋 واچ‌لیست', 'nav:wl')],
       [b('🧠 استراتژی', 'nav:st'), b('⚙️ تنظیمات', 'nav:set')],
-      [b(`🔔 در انتظارِ تأیید (${pending})`, 'nav:pend')],
+      [b(`🔔 در انتظارِ تأیید (${pending})`, 'nav:pend'), b('👥 ادمین‌ها', 'nav:adm')],
     ],
   };
 }
@@ -297,5 +297,54 @@ export function confirmReset() {
   return {
     text: '♻️ همه‌ی عددهای استراتژی و آستانه به پیش‌فرض برگردند؟\nواچ‌لیست و فاصله‌ی اسکن دست نمی‌خورند.',
     buttons: [[b('بله، برگردان', 'act:reset'), b('نه', 'nav:st')]],
+  };
+}
+
+export function admins(s, canManage) {
+  const { owners, admins: added, names } = s;
+  const label = (id, name) => `${name || names[id] ? `${esc(name || names[id])} · ` : ''}<code>${id}</code>`;
+  const lines = [
+    '👥 <b>ادمین‌ها</b>',
+    '',
+    '<b>مالک‌ها</b> — از تنظیماتِ ریل‌وی، از این‌جا حذف نمی‌شوند:',
+    ...owners.map((id) => `👑 ${label(id)}`),
+    '',
+    '<b>ادمین‌های پنل:</b>',
+    ...(added.length ? added.map((a) => `🛡 ${label(a.id, a.name)}`) : ['— هنوز کسی اضافه نشده']),
+    '',
+    'هر ادمین هشدارها را می‌گیرد و به همه‌ی پنل دسترسی دارد.',
+    canManage ? '' : 'فقط مالک‌ها ادمین اضافه یا حذف می‌کنند.',
+  ];
+  const buttons = [];
+  if (canManage) {
+    buttons.push(...added.map((a) => [b(`🗑 حذفِ ${a.name || names[a.id] || a.id}`, `act:arm?:${a.id}`)]));
+    buttons.push([b('➕ افزودنِ ادمین', 'nav:admadd')]);
+  }
+  buttons.push([HOME]);
+  return { text: lines.filter((x, i, a) => x !== '' || a[i - 1] !== '').join('\n').trim(), buttons };
+}
+
+export function adminPrompt(note = '') {
+  return {
+    text: [
+      '➕ <b>افزودنِ ادمین</b>',
+      '',
+      'یکی از این دو کار را بکن:',
+      '• <b>یک پیام از آن شخص را همین‌جا فوروارد کن</b>، یا',
+      '• <b>شناسه‌ی عددی‌اش را بفرست</b> — خودش با فرستادنِ /id به این بات می‌گیردش.',
+      '',
+      'یوزرنیم (@…) کار نمی‌کند؛ تلگرام از روی یوزرنیم شناسه نمی‌دهد.',
+      note ? `\n${note}` : '',
+    ].join('\n'),
+    buttons: [[b('🔙 لغو', 'nav:adm')]],
+  };
+}
+
+export function confirmAdminRemove(s, id) {
+  const a = s.admins.find((x) => String(x.id) === String(id));
+  const name = a?.name || s.names[id] || id;
+  return {
+    text: `🗑 دسترسیِ <b>${esc(name)}</b> برداشته شود؟\nدیگر هشدار نمی‌گیرد و پنل برایش باز نمی‌شود.`,
+    buttons: [[b('بله، حذف کن', `act:arm:${id}`), b('نه', 'nav:adm')]],
   };
 }

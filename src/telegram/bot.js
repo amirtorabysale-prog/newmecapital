@@ -26,8 +26,13 @@ import { utc } from '../format.js';
 const CAPTION_MAX = 1024;
 
 export function createBot({ api, env, cfg, log = console }) {
-  const admins = new Set(env.adminIds.map(String));
-  const isAdmin = (id) => admins.has(String(id));
+  // مالک‌ها از ADMIN_IDS ِ ریل‌وی می‌آیند و از پنل حذف‌شدنی نیستند — وگرنه یک
+  // دکمه‌ی اشتباه همه را از بات بیرون می‌کرد. ادمین‌های پنل در settings.json‌اند.
+  const owners = new Set(env.adminIds.map(String));
+  cfg.admins ??= [];
+  const adminIds = () => [...new Set([...owners, ...cfg.admins.map((a) => String(a.id))])];
+  const isAdmin = (id) => adminIds().includes(String(id));
+  const isOwner = (id) => owners.has(String(id));
   let scanning = false;
   let timer = null;
   let nextScanAt = null;
@@ -45,6 +50,9 @@ export function createBot({ api, env, cfg, log = console }) {
     nextScanAt,
     alerts: store.get().alerts,
     pending: Object.values(store.get().alerts).filter((a) => a.status === 'pending').length,
+    owners: [...owners],
+    admins: cfg.admins,
+    names: store.get().names || {},
   });
 
   // ───────────────────────────── زمان‌بندی
@@ -118,7 +126,7 @@ export function createBot({ api, env, cfg, log = console }) {
   }
 
   /** هشدار با دکمه‌ی انتشار — فقط وقتی پلنِ معامله وجود دارد */
-  async function sendAlert(r, { to = [...admins] } = {}) {
+  async function sendAlert(r, { to = adminIds() } = {}) {
     const id = randomBytes(5).toString('hex');
     const png = chartFor(r);
     const dir = join(dataDir(), 'charts');
@@ -261,6 +269,11 @@ export function createBot({ api, env, cfg, log = console }) {
       case 'cond': return show(chat, msgId, UI.condition(s, arg));
       case 'grp': return show(chat, msgId, UI.group(s, arg));
       case 'par': waiting.delete(String(chat)); return show(chat, msgId, UI.param(s, arg));
+      case 'adm': return show(chat, msgId, UI.admins(s, isOwner(chat)));
+      case 'admadd':
+        if (!isOwner(chat)) return show(chat, msgId, UI.admins(s, false));
+        waiting.set(String(chat), { kind: 'admin', panel: msgId });
+        return show(chat, msgId, UI.adminPrompt());
       case 'add':
         waiting.set(String(chat), { kind: 'add', panel: msgId });
         return show(chat, msgId, UI.addPrompt());
@@ -395,6 +408,22 @@ export function createBot({ api, env, cfg, log = console }) {
         return null;
       }
 
+      case 'arm?':
+        if (!isOwner(cb.from.id)) return api.answer(cb.id, 'فقط مالک‌ها ادمین حذف می‌کنند.', true);
+        await api.answer(cb.id);
+        return show(chat, msgId, UI.confirmAdminRemove(s(), a1));
+
+      case 'arm': {
+        if (!isOwner(cb.from.id)) return api.answer(cb.id, 'فقط مالک‌ها ادمین حذف می‌کنند.', true);
+        const gone = cfg.admins.find((a) => String(a.id) === a1);
+        cfg.admins = cfg.admins.filter((a) => String(a.id) !== a1);
+        saveSettings(cfg);
+        waiting.delete(a1);
+        await api.answer(cb.id, 'حذف شد');
+        if (gone) api.sendMessage(a1, 'دسترسیِ ادمینیِ تو به این بات برداشته شد.').catch(() => {});
+        return show(chat, msgId, UI.admins(s(), true));
+      }
+
       case 'close':
         await api.answer(cb.id);
         return api.deleteMessage(chat, msgId).catch(() => {});
@@ -425,6 +454,31 @@ export function createBot({ api, env, cfg, log = console }) {
       const screen = UI.watchlist(state());
       screen.text = `${M.esc(report.join('\n'))}\n\n${screen.text}`;
       return show(chat, w.panel, screen);
+    }
+    if (w.kind === 'admin') {
+      // شناسه‌ی عددی، یا پیامی که از آن شخص فوروارد شده
+      const fwd = msg.forward_origin?.sender_user || msg.forward_from;
+      const id = fwd?.id ? String(fwd.id) : (msg.text || '').trim().replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+      if (!/^\d{5,15}$/.test(id)) {
+        const hidden = msg.forward_origin?.type === 'hidden_user' || msg.forward_sender_name;
+        return show(chat, w.panel, UI.adminPrompt(hidden
+          ? '⚠️ این شخص فورواردِ پیامش را بسته و شناسه‌اش دیده نمی‌شود. از خودش بخواه به بات /id بدهد و عدد را بفرست.'
+          : '⚠️ این شناسه‌ی عددی نیست. فقط عدد، مثلاً 5123456789.'));
+      }
+      waiting.delete(String(chat));
+      if (isAdmin(id)) return show(chat, w.panel, withNote(UI.admins(state(), true), 'این شخص از قبل ادمین است.'));
+      const name = fwd ? [fwd.first_name, fwd.last_name].filter(Boolean).join(' ') || fwd.username || '' : '';
+      cfg.admins.push({ id, name, by: String(msg.from.id), at: Date.now() });
+      saveSettings(cfg);
+      // پیامِ خوش‌آمد هم آزمایشِ رسیدنِ هشدار است: اگر /start نزده، تلگرام رد می‌کند
+      let note;
+      try {
+        await api.sendMessage(id, '👋 به‌عنوانِ ادمین به باتِ سیگنال اضافه شدی.\nهشدارها برایت می‌آید؛ پنل با /panel باز می‌شود.');
+        note = '✅ اضافه شد و پیامِ خوش‌آمد رسید.';
+      } catch {
+        note = '✅ اضافه شد، ولی هنوز بات را /start نزده — تا نزند هشدار به او نمی‌رسد.';
+      }
+      return show(chat, w.panel, withNote(UI.admins(state(), true), note));
     }
     if (w.kind === 'param') {
       const p = paramById(w.id);
@@ -465,10 +519,19 @@ export function createBot({ api, env, cfg, log = console }) {
     },
   };
 
+  function rememberName(user) {
+    if (!user || !isAdmin(user.id)) return;
+    const names = (store.get().names ??= {});
+    const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || '';
+    if (names[user.id] !== name) { names[user.id] = name; store.save(); }
+  }
+
   async function onMessage(msg) {
+    rememberName(msg.from);
     const text = msg.text || '';
     const chat = msg.chat.id;
-    if (!text.startsWith('/')) {
+    // پیامِ فورواردی (برای افزودنِ ادمین) همیشه ورودی است، حتی اگر با / شروع شود
+    if (!text.startsWith('/') || msg.forward_origin || msg.forward_from) {
       const w = waiting.get(String(chat));
       if (w && isAdmin(msg.from.id)) return onInput(msg, w);
       if (isAdmin(msg.from.id)) return openPanel(chat);
@@ -539,15 +602,19 @@ export function createBot({ api, env, cfg, log = console }) {
       { command: 'id', description: 'شناسه‌ی عددی' },
     ]).catch(() => {});
     schedule();
-    log.info(`[bot] @${me.username} آماده است · ادمین‌ها: ${[...admins].join(', ') || '—'}`
+    log.info(`[bot] @${me.username} آماده است · ادمین‌ها: ${adminIds().join(', ') || '—'}`
       + ` · اسکنِ بعدی ${utc(nextScanAt)} UTC`);
-    for (const a of admins) {
+    for (const a of adminIds()) {
       api.sendMessage(a, `🤖 بات روشن شد. اسکنِ بعدی ${utc(nextScanAt)} UTC (هر ${cfg.scanEvery}).\nبرای پنل /panel را بزن.`).catch(() => {});
     }
     return poll();
   }
 
   return { start, runScan, commands, decide, schedule, onCallback, onMessage, state };
+}
+
+function withNote(screen, note) {
+  return { ...screen, text: `${M.esc(note)}\n\n${screen.text}` };
 }
 
 function visibleLength(html) {

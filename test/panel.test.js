@@ -214,3 +214,46 @@ test('چارت بدونِ خط و با خطِ دور: بدونِ NaN', () => {
   const svg2 = buildChartSvg({ candles: far, result: r, meta });
   assert.ok(svg2.includes('ATR to trendline') && !svg2.includes('NaN'));
 });
+
+test('ادمین‌ها: مالک با شناسه یا فوروارد اضافه می‌کند؛ ادمینِ پنل حذف نمی‌کند؛ مالک حذف‌شدنی نیست', async () => {
+  const { cfg, api, bot, press, type, lastScreen, btns } = setup();
+  await press('nav:adm');
+  assert.match(lastScreen().args[2], /👑.*7/);
+  assert.ok(!btns(lastScreen()).some((b) => /act:arm\?:7$/.test(b.callback_data)), 'مالک دکمه‌ی حذف دارد');
+
+  // شناسه‌ی عددی
+  await press('nav:admadd');
+  await type('@someone');
+  assert.match(lastScreen().args[2], /شناسه‌ی عددی نیست/);
+  await type('5123456789');
+  assert.ok(cfg.admins.some((a) => a.id === '5123456789'));
+  assert.ok(api.calls.some((c) => c.name === 'sendMessage' && c.args[0] === '5123456789'), 'خوش‌آمد نرفت');
+  assert.equal(loadConfig().admins.length, 1, 'روی دیسک ذخیره نشد');
+
+  // فوروارد
+  await press('nav:admadd');
+  await bot.onMessage({ from: { id: 7 }, chat: { id: 7 }, message_id: 2, text: 'سلام',
+    forward_origin: { type: 'user', sender_user: { id: 4400000001, first_name: 'Sara' } } });
+  assert.ok(cfg.admins.some((a) => a.id === '4400000001' && a.name === 'Sara'));
+
+  // فورواردِ بسته
+  await press('nav:admadd');
+  await bot.onMessage({ from: { id: 7 }, chat: { id: 7 }, message_id: 3, text: 'x', forward_origin: { type: 'hidden_user', sender_user_name: 'Ali' } });
+  assert.match(lastScreen().args[2], /فورواردِ پیامش را بسته/);
+  await press('nav:adm');
+
+  // ادمینِ تازه پنل را باز می‌کند ولی حذف نمی‌کند
+  api.calls.length = 0;
+  await bot.onMessage({ text: '/panel', from: { id: 5123456789 }, chat: { id: 5123456789 }, message_id: 9 });
+  assert.match(api.calls.at(-1).args[1], /پنلِ بات سیگنال/);
+  await bot.onCallback({ id: 'q', data: 'act:arm:4400000001', from: { id: 5123456789 }, message: { chat: { id: 5123456789 }, message_id: 1 } });
+  assert.ok(cfg.admins.some((a) => a.id === '4400000001'), 'ادمینِ پنل توانست حذف کند');
+
+  // مالک حذف می‌کند
+  await press('act:arm:4400000001');
+  await press('act:arm:5123456789');
+  assert.equal(cfg.admins.length, 0);
+  api.calls.length = 0;
+  await bot.onMessage({ text: '/panel', from: { id: 5123456789 }, chat: { id: 5123456789 }, message_id: 10 });
+  assert.ok(!api.calls.some((c) => /پنلِ بات/.test(c.args[1] || '')), 'ادمینِ حذف‌شده هنوز پنل دارد');
+});
