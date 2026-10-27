@@ -279,6 +279,7 @@ export function settings(s) {
       [b(`🔁 تکرارِ هشدار: ${cfg.cooldownHours} ساعت`, 'nav:par:61')],
       [b(`👀 هشدارِ نزدیک شدن: ${cfg.nearAlerts ? 'روشن' : 'خاموش'}`, 'act:near')],
       [b(`⏱ عمرِ پیگیری: ${cfg.maxHoldHours} ساعت`, 'nav:par:63')],
+      [b(`📢 کانالِ انتشار${s.channel?.status ? (s.channel.status.ok ? ' ✅' : ' ⚠️') : ''}`, 'nav:chan')],
       [HOME],
     ],
   };
@@ -434,4 +435,41 @@ export function editor({ alert, base, plan, direction, error, prompt }) {
     [b('✖️ بستن', `ed:${id}:x`)],
   ];
   return { text: lines.filter((x, i, a) => x !== '' || a[i - 1] !== '').join('\n'), buttons };
+}
+
+export function channel(s, canManage, note = '') {
+  const { id, status, fromPanel } = s.channel;
+  const lines = [
+    '📢 <b>کانالِ انتشار</b>',
+    '',
+    `شناسه: <code>${esc(id || 'خالی')}</code>${fromPanel ? ' (از پنل)' : ' (از CHANNEL_ID ِ ریل‌وی)'}`,
+  ];
+  if (status?.chat?.title) lines.push(`نام: <b>${esc(status.chat.title)}</b>`);
+  lines.push(status?.ok ? '✅ بات می‌تواند در این کانال پست بگذارد.' : `⚠️ ${esc(status?.error || 'بررسی نشده')}`);
+  if (!status?.ok) {
+    lines.push('', 'ساده‌ترین راه: «تعیین با فوروارد» را بزن و یک پست از کانال را این‌جا فوروارد کن — شناسه را خودم برمی‌دارم.');
+  }
+  if (note) lines.unshift(esc(note), '');
+  const buttons = [];
+  if (canManage) {
+    buttons.push([b('📨 تعیین با فوروارد', 'nav:chanset')]);
+    if (fromPanel) buttons.push([b('↩️ برگشت به CHANNEL_ID ِ ریل‌وی', 'act:chanenv')]);
+  }
+  buttons.push([b('🔄 بررسیِ دوباره', 'nav:chan'), HOME]);
+  return { text: lines.join('\n'), buttons };
+}
+
+export function channelPrompt(note = '') {
+  return {
+    text: [
+      '📨 <b>تعیینِ کانال</b>',
+      '',
+      '<b>یک پست از کانال را همین‌جا فوروارد کن.</b>',
+      'یا یوزرنیمِ کانالِ عمومی را بفرست، مثلاً <code>@mychannel</code>.',
+      '',
+      'پیش از آن بات را در کانال ادمین کن، با اجازه‌ی «ارسالِ پیام».',
+      note ? `\n${note}` : '',
+    ].join('\n'),
+    buttons: [[b('🔙 لغو', 'nav:chan')]],
+  };
 }

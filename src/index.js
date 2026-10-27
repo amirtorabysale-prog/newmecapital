@@ -14,7 +14,7 @@ const problems = [];
 if (!/^\d+:[\w-]{30,}$/.test(env.token)) problems.push('BOT_TOKEN خالی یا نامعتبر است (از @BotFather).');
 if (!env.adminIds.length) problems.push('ADMIN_IDS خالی است — بدونِ ادمین هیچ هشداری به کسی نمی‌رسد.');
 if (env.adminIds.some((id) => !/^-?\d+$/.test(id))) problems.push('ADMIN_IDS باید شناسه‌ی عددی باشد، نه یوزرنیم.');
-if (!env.channelId) console.warn('⚠️ CHANNEL_ID خالی است: هشدارها می‌آیند ولی دکمه‌ی انتشار کار نمی‌کند.');
+if (!env.channelId) console.warn('⚠️ CHANNEL_ID خالی است — از پنل: تنظیمات ← کانال، با فورواردِ یک پست.');
 
 if (problems.length) {
   console.error('❌ بات بالا نیامد:\n  - ' + problems.join('\n  - '));

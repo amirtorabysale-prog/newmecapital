@@ -20,7 +20,7 @@ const DEFAULTS_PATH = join(ROOT, 'config', 'default.json');
 // DATA_DIR روی Railway باید یک Volume باشد — store.js را ببین
 let settingsPath = join(process.env.DATA_DIR || join(ROOT, 'data'), 'settings.json');
 
-export const MUTABLE_KEYS = ['watchlist', 'scanEvery', 'directions', 'timeframe', 'overrides', 'admins'];
+export const MUTABLE_KEYS = ['watchlist', 'scanEvery', 'directions', 'timeframe', 'overrides', 'admins', 'channel'];
 export const TIMEFRAMES = ['1h', '4h', '1d'];
 export const SCAN_INTERVALS = { '1h': 1, '4h': 4, '1d': 24 };
 

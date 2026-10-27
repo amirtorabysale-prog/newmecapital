@@ -25,6 +25,7 @@ import { PARAMS, paramById, getPath, coerce } from '../strategy/params.js';
 import * as M from '../messages.js';
 import * as UI from './panel.js';
 import { utc } from '../format.js';
+import { normalizeChannel, checkChannel } from '../channel.js';
 
 const CAPTION_MAX = 1024;
 
@@ -36,6 +37,20 @@ export function createBot({ api, env, cfg, log = console }) {
   const adminIds = () => [...new Set([...owners, ...cfg.admins.map((a) => String(a.id))])];
   const isAdmin = (id) => adminIds().includes(String(id));
   const isOwner = (id) => owners.has(String(id));
+
+  // کانال: اگر از پنل (با فوروارد) تعیین شده همان، وگرنه CHANNEL_ID ِ ریل‌وی، تمیزشده
+  const envChannel = normalizeChannel(env.channelId);
+  const channelId = () => cfg.channel?.id || envChannel.id;
+  let botId = null;
+  let channelStatus = null; // آخرین نتیجه‌ی checkChannel
+
+  async function refreshChannel() {
+    channelStatus = botId
+      ? await checkChannel(api, channelId(), botId)
+      : { ok: !!channelId(), error: channelId() ? null : 'کانال تنظیم نشده' };
+    if (!channelId() && envChannel.error && env.channelId) channelStatus.error = `CHANNEL_ID: ${envChannel.error}`;
+    return channelStatus;
+  }
   let scanning = false;
   let timer = null;
   let nextScanAt = null;
@@ -57,6 +72,7 @@ export function createBot({ api, env, cfg, log = console }) {
     admins: cfg.admins,
     names: store.get().names || {},
     signals: store.signals(),
+    channel: { id: channelId(), status: channelStatus, fromPanel: !!cfg.channel?.id },
   });
 
   // ───────────────────────────── زمان‌بندی
@@ -221,7 +237,7 @@ export function createBot({ api, env, cfg, log = console }) {
     if (ageH > cfg.alertTtlHours) {
       return api.answer(cb.id, `این هشدار ${ageH.toFixed(1)} ساعت پیش آمده و قیمت جابه‌جا شده. از پنل «تحلیلِ دوباره» بزن.`, true);
     }
-    if (!env.channelId) return api.answer(cb.id, 'CHANNEL_ID تنظیم نشده.', true);
+    if (!channelId()) return api.answer(cb.id, 'کانال تنظیم نشده. پنل ← ⚙️ تنظیمات ← 📢 کانال.', true);
 
     // پلنِ نهایی پیش از قفل سنجیده می‌شود: ویرایشِ نامعتبر نباید هشدار را قفل کند
     const final = finalRow(a);
@@ -234,9 +250,9 @@ export function createBot({ api, env, cfg, log = console }) {
       const { row, png } = final;
       const analysis = row ? M.channelAnalysis(row, cfg, { note: a.edits?.note }) : a.analysis;
       const signal = row ? (row.result.plan ? M.channelSignal(row, cfg) : null) : a.signal;
-      const post = await sendPhotoWithText(env.channelId, png, analysis);
+      const post = await sendPhotoWithText(channelId(), png, analysis);
       let sigMsg = null;
-      if (signal) sigMsg = await api.sendMessage(env.channelId, signal, { replyTo: post.id });
+      if (signal) sigMsg = await api.sendMessage(channelId(), signal, { replyTo: post.id });
       const now = Date.now();
       store.updateAlert(alertId, { status: 'published', by: who, publishedAt: now });
       // پیگیری: از همین لحظه، با همان صرافی و همان نماد
@@ -252,8 +268,13 @@ export function createBot({ api, env, cfg, log = console }) {
     } catch (e) {
       store.updateAlert(alertId, { status: 'pending' });
       log.error('[publish]', e.message);
-      await api.sendMessage(cb.from.id, `❌ انتشار در کانال ناموفق بود: ${M.esc(e.description || e.message)}\n`
-        + 'بات باید ادمینِ کانال باشد و اجازه‌ی ارسالِ پیام داشته باشد.');
+      const st = await refreshChannel();
+      await api.sendMessage(cb.from.id, [
+        `❌ انتشار در کانال ناموفق بود: ${M.esc(e.description || e.message)}`,
+        st.ok ? '' : `علت: ${M.esc(st.error)}`,
+        '',
+        'درست کردنش: پنل ← ⚙️ تنظیمات ← 📢 کانال ← یک پست از کانال را فوروارد کن. هشدار سرِ جایش می‌ماند؛ بعد دوباره «انتشار» را بزن.',
+      ].filter((x, i) => x || i > 1).join('\n'), { buttons: [[{ text: '📢 تنظیمِ کانال', callback_data: 'nav:chan' }]] });
     }
   }
 
@@ -405,8 +426,8 @@ export function createBot({ api, env, cfg, log = console }) {
         store.putSignal(sig);
         for (const e of events) {
           const text = M.trackEventText(sig, e);
-          if (env.channelId) {
-            await api.sendMessage(env.channelId, text, { replyTo: sig.channelMsgId })
+          if (channelId()) {
+            await api.sendMessage(channelId(), text, { replyTo: sig.channelMsgId })
               .catch((err) => log.error('[track] کانال:', err.message));
           }
           for (const chat of adminIds()) {
@@ -475,6 +496,14 @@ export function createBot({ api, env, cfg, log = console }) {
       case 'par': waiting.delete(String(chat)); return show(chat, msgId, UI.param(s, arg));
       case 'adm': return show(chat, msgId, UI.admins(s, isOwner(chat)));
       case 'perf': return show(chat, msgId, UI.performance(s));
+      case 'chan':
+        await show(chat, msgId, { text: '⏳ در حالِ بررسیِ کانال…', buttons: [] });
+        await refreshChannel();
+        return show(chat, msgId, UI.channel(state(), isOwner(chat)));
+      case 'chanset':
+        if (!isOwner(chat)) return show(chat, msgId, UI.channel(s, false));
+        waiting.set(String(chat), { kind: 'channel', panel: msgId });
+        return show(chat, msgId, UI.channelPrompt());
       case 'admadd':
         if (!isOwner(chat)) return show(chat, msgId, UI.admins(s, false));
         waiting.set(String(chat), { kind: 'admin', panel: msgId });
@@ -587,6 +616,14 @@ export function createBot({ api, env, cfg, log = console }) {
         await api.answer(cb.id, a1 === '1h' ? '✓' : 'استراتژی برای یک‌ساعته طراحی شده؛ این تغییر را با بک‌تست بسنج.', a1 !== '1h');
         return show(chat, msgId, UI.settings(s()));
 
+      case 'chanenv':
+        if (!isOwner(cb.from.id)) return api.answer(cb.id, 'فقط مالک‌ها.', true);
+        delete cfg.channel;
+        saveSettings(cfg);
+        await refreshChannel();
+        await api.answer(cb.id, 'به CHANNEL_ID ِ ریل‌وی برگشت');
+        return show(chat, msgId, UI.channel(s(), true));
+
       case 'near':
         setParam(cfg, 'nearAlerts', !cfg.nearAlerts);
         await api.answer(cb.id, cfg.nearAlerts ? 'روشن شد' : 'خاموش شد');
@@ -663,6 +700,25 @@ export function createBot({ api, env, cfg, log = console }) {
       return show(chat, w.panel, screen);
     }
     if (w.kind === 'edit') return onEditInput(msg, w);
+    if (w.kind === 'channel') {
+      api.deleteMessage(chat, msg.message_id).catch(() => {});
+      const fchat = msg.forward_origin?.chat || msg.forward_from_chat;
+      let id;
+      if (fchat) id = String(fchat.id);
+      else {
+        const n = normalizeChannel(msg.text);
+        if (!n.id) return show(chat, w.panel, UI.channelPrompt(`⚠️ ${M.esc(n.error)}`));
+        id = n.id;
+      }
+      await show(chat, w.panel, { text: '⏳ در حالِ بررسیِ دسترسیِ بات در این کانال…', buttons: [] });
+      const st = await checkChannel(api, id, botId);
+      if (!st.ok) return show(chat, w.panel, UI.channelPrompt(`⚠️ ${M.esc(st.error)}`));
+      cfg.channel = { id: String(st.chat.id), title: st.chat.title || '' };
+      saveSettings(cfg);
+      waiting.delete(String(chat));
+      channelStatus = st;
+      return show(chat, w.panel, UI.channel(state(), true, '✅ کانال ذخیره شد و بات می‌تواند در آن پست بگذارد.'));
+    }
     if (w.kind === 'admin') {
       // شناسه‌ی عددی، یا پیامی که از آن شخص فوروارد شده
       const fwd = msg.forward_origin?.sender_user || msg.forward_from;
@@ -804,6 +860,15 @@ export function createBot({ api, env, cfg, log = console }) {
 
   async function start() {
     const me = await api.getMe();
+    botId = me.id;
+    const ch = await refreshChannel();
+    if (!ch.ok) {
+      log.warn(`[channel] ${ch.error} (${channelId() || 'خالی'})`);
+      for (const o of owners) {
+        api.sendMessage(o, `⚠️ <b>کانالِ انتشار کار نمی‌کند:</b> ${M.esc(ch.error)}\nمقدارِ فعلی: <code>${M.esc(channelId() || env.channelId || 'خالی')}</code>\n\n`
+          + 'یک پست از کانال را این‌جا فوروارد کن تا خودم شناسه را بردارم:', { buttons: [[{ text: '📢 تنظیمِ کانال', callback_data: 'nav:chan' }]] }).catch(() => {});
+      }
+    }
     await api.deleteWebhook();
     await api.setCommands([
       { command: 'panel', description: 'پنلِ مدیریت' },
@@ -813,7 +878,9 @@ export function createBot({ api, env, cfg, log = console }) {
     schedule();
     // پیگیری هر ۱۰ دقیقه — کندلِ ۵ دقیقه‌ای، پس دیرتر از ۱۵ دقیقه خبری نمی‌ماند
     trackTimer = setInterval(() => runTracker().catch((e) => log.error('[track]', e)), 10 * 60_000);
-    setTimeout(() => runTracker().catch((e) => log.error('[track]', e)), 20_000);
+    setTimeout(() => runTracker().catch((e) => log.error('[track]', e)), 20_000).unref?.();
+    // مثلِ تایمرِ اسکن: polling پروسه را زنده نگه می‌دارد، این‌ها نباید
+    trackTimer.unref?.();
     log.info(`[bot] @${me.username} آماده است · ادمین‌ها: ${adminIds().join(', ') || '—'}`
       + ` · اسکنِ بعدی ${utc(nextScanAt)} UTC`);
     for (const a of adminIds()) {

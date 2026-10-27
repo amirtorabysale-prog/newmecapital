@@ -76,7 +76,7 @@ function setup() {
   cfg.candles = 140;
   cfg.minCandles = 120;
   const api = fakeApi();
-  const bot = createBot({ api, env: { adminIds: ['7'], channelId: '@c' }, cfg, log: { info() {}, warn() {}, error() {} } });
+  const bot = createBot({ api, env: { adminIds: ['7'], channelId: '@testchan' }, cfg, log: { info() {}, warn() {}, error() {} } });
   const press = (data, msgId = 900) => bot.onCallback({ id: 'q', data, from: { id: 7 }, message: { chat: { id: 7 }, message_id: msgId } });
   const type = (text) => bot.onMessage({ text, from: { id: 7 }, chat: { id: 7 }, message_id: 1 });
   const lastScreen = () => [...api.calls].reverse().find((c) => c.name === 'editText' || c.name === 'sendMessage');
@@ -297,7 +297,7 @@ test('ویرایش ← انتشار با حد ضررِ تازه ← پیگیری
   // انتشار
   api.calls.length = 0;
   await press(`ed:${id}:pub`, editorId);
-  const toChannel = api.calls.filter((c) => c.args[0] === '@c');
+  const toChannel = api.calls.filter((c) => c.args[0] === '@testchan');
   assert.equal(toChannel.length, 2, 'تحلیل و سیگنال باید در کانال بروند');
   assert.match(toChannel[0].args[2] || toChannel[0].args[1], /حمایتِ هفتگی/);
   assert.match(toChannel[1].args[1], /حد ضرر: <code>109\.00<\/code>/);
@@ -310,7 +310,7 @@ test('ویرایش ← انتشار با حد ضررِ تازه ← پیگیری
   globalThis.trackHigh = 121;
   api.calls.length = 0;
   await bot.runTracker();
-  const ann = api.calls.find((c) => c.args[0] === '@c');
+  const ann = api.calls.find((c) => c.args[0] === '@testchan');
   assert.match(ann.args[1], /تارگتِ 1 خورد/);
   assert.equal(ann.args[2].replyTo, sig.channelMsgId);
   assert.equal(sig.hits, 1);
@@ -349,4 +349,55 @@ test('هشدارِ نزدیک شدن: یک بار برای هر ستاپ، و ب
   } finally {
     globalThis.fetch = orig;
   }
+});
+
+test('کانال: شکل‌های رایجِ اشتباهِ CHANNEL_ID درست می‌شوند', async () => {
+  const { normalizeChannel } = await import('../src/channel.js');
+  assert.equal(normalizeChannel('mychannel').id, '@mychannel');
+  assert.equal(normalizeChannel(' @mychannel ').id, '@mychannel');
+  assert.equal(normalizeChannel('https://t.me/mychannel').id, '@mychannel');
+  assert.equal(normalizeChannel('1987654321').id, '-1001987654321');
+  assert.equal(normalizeChannel('-1987654321').id, '-1001987654321');
+  assert.equal(normalizeChannel('-1001987654321').id, '-1001987654321');
+  assert.equal(normalizeChannel('https://t.me/c/1987654321/15').id, '-1001987654321');
+  assert.equal(normalizeChannel('"@mychannel"').id, '@mychannel');
+  assert.match(normalizeChannel('https://t.me/+AbCdEf').error, /فوروارد/);
+});
+
+test('کانال: فورواردِ یک پست ← بررسیِ دسترسی ← ذخیره و انتشار به همان', async () => {
+  const { cfg, api, bot, press, lastScreen } = setup();
+  const CH = -1002223334445;
+  let botIsAdmin = false;
+  api.call = async (method, payload) => {
+    api.calls.push({ name: method, args: [payload] });
+    if (method === 'getChat') return { id: CH, type: 'channel', title: 'NewMe Signals' };
+    if (method === 'getChatMember') return botIsAdmin ? { status: 'administrator', can_post_messages: true } : { status: 'left' };
+    return { message_id: 1 };
+  };
+  api.getMe = async () => ({ id: 42, username: 'b' });
+  api.deleteWebhook = async () => true;
+  api.setCommands = async () => true;
+  api.getUpdates = () => new Promise(() => {}); // polling تا ابد منتظر می‌ماند
+  bot.start();
+  await new Promise((r) => setTimeout(r, 20));
+
+  await press('nav:chanset');
+  const fwd = { from: { id: 7 }, chat: { id: 7 }, message_id: 5, text: 'پست', forward_origin: { type: 'channel', chat: { id: CH, title: 'NewMe Signals' } } };
+  await bot.onMessage(fwd);
+  assert.match(lastScreen().args[2], /بات ادمینِ کانال نیست/);
+  assert.equal(cfg.channel, undefined);
+
+  botIsAdmin = true;
+  await bot.onMessage(fwd);
+  assert.match(lastScreen().args[2], /کانال ذخیره شد/);
+  assert.equal(cfg.channel.id, String(CH));
+  assert.equal(loadConfig().channel.id, String(CH), 'روی دیسک ذخیره نشد');
+
+  // انتشار حالا به همان کانال می‌رود
+  cfg.cooldownHours = 0;
+  await press('act:chart:TEST');
+  const okBtn = api.calls.filter((c) => c.name === 'sendPhoto').at(-1).args[3].buttons.flat().find((x) => x.callback_data.startsWith('ok:'));
+  api.calls.length = 0;
+  await press(okBtn.callback_data);
+  assert.ok(api.calls.some((c) => c.name === 'sendPhoto' && c.args[0] === String(CH)), 'به کانالِ تازه نرفت');
 });
