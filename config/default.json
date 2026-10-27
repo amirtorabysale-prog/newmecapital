@@ -1,0 +1,75 @@
+{
+  "watchlist": [
+    { "id": "BTCUSD", "base": "BTC" },
+    { "id": "XAUUSD", "base": "XAU", "lbank": "xaut_usdt", "binance": "PAXGUSDT", "binanceFutures": "XAUUSDT" },
+    { "id": "SOLUSDT", "base": "SOL" },
+    { "id": "AVAXUSDT", "base": "AVAX" },
+    { "id": "AAVEUSDT", "base": "AAVE" },
+    { "id": "HYPEUSDT", "base": "HYPE" },
+    { "id": "NEARUSDT", "base": "NEAR" },
+    { "id": "MAGMAUSDT", "base": "MAGMA" }
+  ],
+
+  "exchanges": ["lbank", "binance", "binanceFutures"],
+  "timeframe": "1h",
+  "candles": 400,
+  "scanEvery": "4h",
+
+  "alertThreshold": 70,
+  "directions": ["long"],
+  "cooldownHours": 12,
+  "alertTtlHours": 3,
+
+  "strategy": {
+    "atrPeriod": 14,
+    "rsiPeriod": 14,
+
+    "trendline": {
+      "lookback": 250,
+      "pivotStrength": 6,
+      "minSpacing": 12,
+      "minBounceAtr": 2.0,
+      "touchToleranceAtr": 0.5,
+      "approachAtr": 1.5,
+      "breakToleranceAtr": 0.25,
+      "maxWickPierceAtr": 0.6,
+      "touchWindow": 3
+    },
+
+    "fib": {
+      "level": 0.618,
+      "toleranceAtr": 0.6,
+      "nearToleranceAtr": 1.2
+    },
+
+    "divergence": {
+      "pivotStrength": 3,
+      "lookback": 60,
+      "minGap": 8,
+      "minRsiDelta": 3.0,
+      "allowHidden": true
+    },
+
+    "candles": {
+      "window": 2
+    },
+
+    "weights": {
+      "trendline": 30,
+      "fib": 25,
+      "divergence": 25,
+      "candle": 20
+    },
+
+    "plan": {
+      "slBufferAtr": 0.5,
+      "tpExtensions": [0, 0.272, 0.618],
+      "minRR": 1.0
+    }
+  },
+
+  "chart": {
+    "minBars": 70,
+    "watermark": ""
+  }
+}

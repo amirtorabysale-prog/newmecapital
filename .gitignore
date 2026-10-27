@@ -1,5 +1,4 @@
-__pycache__/
-*.pyc
+node_modules/
 .env
 data/
-state.json
+out/
