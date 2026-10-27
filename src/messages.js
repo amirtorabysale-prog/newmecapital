@@ -167,7 +167,7 @@ export function adminAlert({ item, data, result: res }, cfg) {
   ].join('\n');
 }
 
-export function channelAnalysis({ data, result: res }, cfg) {
+export function channelAnalysis({ data, result: res }, cfg, { note } = {}) {
   const c = data.candles;
   const P = (v) => price(v, res.close);
   const up = res.direction !== 'short';
@@ -199,6 +199,7 @@ export function channelAnalysis({ data, result: res }, cfg) {
     parts.push(`تا وقتی کندلِ ${tf} ${up ? 'زیرِ' : 'بالای'} ${P(res.plan.invalidation)} بسته نشده،`
       + ` سناریوی ${up ? 'صعودی' : 'نزولی'} معتبر است.`);
   }
+  if (note) parts.push('', `📝 ${esc(note)}`);
   parts.push(`<i>داده: ${esc(data.exchange)} · ${esc(data.pretty)}</i>`);
   return parts.join('\n');
 }
@@ -265,4 +266,48 @@ export function strategyText(cfg) {
   const changed = Object.keys(cfg.overrides || {}).length;
   if (changed) lines.push('', `✏️ ${changed} مقدار با پیش‌فرض فرق دارد.`);
   return lines.join('\n');
+}
+
+const signR = (r) => `${r >= 0 ? '+' : '−'}${Math.abs(r).toFixed(2)}R`;
+
+/** رویدادِ پیگیری — در کانال، در جوابِ همان پیامِ سیگنال */
+export function trackEventText(sig, e) {
+  const P = (v) => price(v, sig.entry);
+  const n = sig.tps.length;
+  switch (e.type) {
+    case 'tp':
+      return e.index === n
+        ? `🏆 <b>تارگتِ ${e.index} (آخر) خورد</b> — <code>${P(e.price)}</code>\nسیگنالِ ${esc(sig.pretty)} کامل بسته شد · نتیجه ${signR(e.r)}`
+        : `✅ <b>تارگتِ ${e.index} خورد</b> — <code>${P(e.price)}</code>`
+          + (e.index === 1 ? `\n📌 حد ضرر به نقطه‌ی ورود (${P(sig.entry)}) منتقل شود.` : '');
+    case 'sl':
+      return `🛑 <b>حد ضرر خورد</b> — <code>${P(e.price)}</code> · ${signR(e.r)}`;
+    case 'be':
+      return `⚪️ <b>قیمت به نقطه‌ی ورود برگشت</b> — باقیِ پوزیشن سر‌به‌سر بسته شد · نتیجه‌ی کل ${signR(e.r)}`;
+    case 'expired':
+      return `⏱ <b>پیگیریِ سیگنال تمام شد</b> — بعد از ${Math.round((sig.closedAt - sig.publishedAt) / 3_600_000)} ساعت،`
+        + ` با قیمتِ <code>${P(e.price)}</code> · ${signR(e.r)}`;
+    default:
+      return '';
+  }
+}
+
+export { signR };
+
+/** هشدارِ «نزدیک شدن به خط» — فقط برای ادمین */
+export function nearAlert(row) {
+  const res = row.result;
+  const L = res.line;
+  const atrPct = (res.atr / res.close) * 100;
+  const ready = Object.entries(res.components)
+    .filter(([k, c]) => k !== 'trendline' && c.enabled && c.points > 0)
+    .map(([k]) => CONDITIONS[k].fa);
+  return [
+    `👀 <b>${esc(row.data.pretty)} به خط روند نزدیک می‌شود</b>`,
+    `قیمت ${price(res.close)} · خط حوالیِ <b>${price(L.priceNow, res.close)}</b>`,
+    `فاصله ${L.distAtr.toFixed(1)} ATR (حدود ${(L.distAtr * atrPct).toFixed(1)}٪)`,
+    ready.length ? `از الان برقرار: ${ready.join('، ')}` : 'هنوز شرطِ دیگری برقرار نیست.',
+    '',
+    'اگر روی خط شرط‌ها کامل شد، هشدارِ اصلی با دکمه‌ی انتشار می‌آید.',
+  ].join('\n');
 }

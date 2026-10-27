@@ -19,6 +19,8 @@
   "directions": ["long"],
   "cooldownHours": 12,
   "alertTtlHours": 3,
+  "nearAlerts": true,
+  "maxHoldHours": 120,
 
   "strategy": {
     "atrPeriod": 14,

@@ -51,7 +51,7 @@ export function createApi(token) {
     deleteWebhook: () => call('deleteWebhook', { drop_pending_updates: false }),
     sendMessage: (chatId, text, { buttons, replyTo } = {}) => call('sendMessage', {
       chat_id: chatId, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true },
-      reply_markup: kb(buttons), reply_parameters: replyTo ? { message_id: replyTo } : undefined,
+      reply_markup: kb(buttons), reply_parameters: replyTo ? { message_id: replyTo, allow_sending_without_reply: true } : undefined,
     }),
     sendPhoto: (chatId, photo, caption, { buttons } = {}) => call('sendPhoto', {
       chat_id: chatId, photo, caption, parse_mode: 'HTML', reply_markup: kb(buttons),

@@ -16,6 +16,9 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { SCAN_INTERVALS, TIMEFRAMES, parseSymbol, saveSettings, setParam, resetParams } from '../config.js';
 import { scanOne, setupKey } from '../scanner.js';
+import { fetchFrom } from '../exchanges/index.js';
+import { TRACK_TF, newSignal, step } from '../tracker.js';
+import { applyEdits, validatePlan, hasEdits } from '../planEdit.js';
 import { renderChart } from '../chart/render.js';
 import { store, dataDir } from '../store.js';
 import { PARAMS, paramById, getPath, coerce } from '../strategy/params.js';
@@ -53,6 +56,7 @@ export function createBot({ api, env, cfg, log = console }) {
     owners: [...owners],
     admins: cfg.admins,
     names: store.get().names || {},
+    signals: store.signals(),
   });
 
   // ───────────────────────────── زمان‌بندی
@@ -104,6 +108,22 @@ export function createBot({ api, env, cfg, log = console }) {
         store.markSent(key);
         alerts++;
       }
+      // پیش‌هشدار: قیمت دارد به خط می‌رسد — فقط برای ادمین، بی‌دکمه‌ی انتشار
+      if (cfg.nearAlerts) {
+        for (const r of out) {
+          const res = r.result;
+          if (!res || res.line.state !== 'approach' || res.blocked.length) continue;
+          const key = `near:${setupKey(r)}`;
+          if (store.onCooldown(key, cfg.cooldownHours)) continue;
+          for (const chat of adminIds()) {
+            await api.sendMessage(chat, M.nearAlert(r), {
+              buttons: [[{ text: '🖼 دیدنِ چارت', callback_data: `act:chart:${r.item.base}` }]],
+            }).catch((e) => log.warn('[near]', e.message));
+          }
+          store.markSent(key);
+        }
+      }
+
       const s = store.get();
       s.lastScan = {
         at: Date.now(), alerts,
@@ -134,11 +154,9 @@ export function createBot({ api, env, cfg, log = console }) {
     const chartPath = join(dir, `${id}.png`);
     writeFileSync(chartPath, png);
 
+    store.saveSnapshot(id, r);
     const caption = M.adminAlert(r, cfg);
-    const buttons = [[
-      { text: '✅ انتشار در کانال', callback_data: `ok:${id}` },
-      { text: '❌ رد', callback_data: `no:${id}` },
-    ]];
+    const buttons = alertButtons(id);
     const messages = [];
     for (const chat of to) {
       try {
@@ -156,6 +174,13 @@ export function createBot({ api, env, cfg, log = console }) {
       messages,
     });
     return id;
+  }
+
+  function alertButtons(id) {
+    return [
+      [{ text: '✅ انتشار در کانال', callback_data: `ok:${id}` }, { text: '❌ رد', callback_data: `no:${id}` }],
+      [{ text: '✏️ ویرایش پیش از انتشار', callback_data: `ed:${id}:open` }],
+    ];
   }
 
   /** «تحلیل روی چارت» از پنل — با پلن ← هشدارِ کامل با دکمه‌ی انتشار؛ بی‌پلن ← فقط عکس و توضیح */
@@ -198,20 +223,199 @@ export function createBot({ api, env, cfg, log = console }) {
     }
     if (!env.channelId) return api.answer(cb.id, 'CHANNEL_ID تنظیم نشده.', true);
 
+    // پلنِ نهایی پیش از قفل سنجیده می‌شود: ویرایشِ نامعتبر نباید هشدار را قفل کند
+    const final = finalRow(a);
+    if (final.error) return api.answer(cb.id, final.error, true);
+
     // قفل پیش از تماسِ شبکه: دو ادمین که هم‌زمان بزنند نباید دو پست بسازند
     store.updateAlert(alertId, { status: 'publishing' });
     await api.answer(cb.id, 'در حالِ انتشار…');
     try {
-      const png = readFileSync(a.chartPath);
-      const post = await sendPhotoWithText(env.channelId, png, a.analysis);
-      if (a.signal) await api.sendMessage(env.channelId, a.signal, { replyTo: post.id });
-      store.updateAlert(alertId, { status: 'published', by: who, publishedAt: Date.now() });
-      await closeAlert(a, `✅ منتشر شد توسطِ ${who} · ${utc(Date.now())} UTC`);
+      const { row, png } = final;
+      const analysis = row ? M.channelAnalysis(row, cfg, { note: a.edits?.note }) : a.analysis;
+      const signal = row ? (row.result.plan ? M.channelSignal(row, cfg) : null) : a.signal;
+      const post = await sendPhotoWithText(env.channelId, png, analysis);
+      let sigMsg = null;
+      if (signal) sigMsg = await api.sendMessage(env.channelId, signal, { replyTo: post.id });
+      const now = Date.now();
+      store.updateAlert(alertId, { status: 'published', by: who, publishedAt: now });
+      // پیگیری: از همین لحظه، با همان صرافی و همان نماد
+      if (row?.result.plan && sigMsg && row.data.exchangeKey) {
+        store.putSignal(newSignal({
+          id: alertId, item: row.item, data: row.data, direction: row.result.direction,
+          plan: row.result.plan, publishedAt: now, channelMsgId: sigMsg.message_id, maxHoldHours: cfg.maxHoldHours,
+        }));
+      }
+      const edited = hasEdits(a.edits) ? ' (با ویرایش)' : '';
+      await closeAlert(a, `✅ منتشر شد${edited} توسطِ ${who} · ${utc(now)} UTC`);
+      return true;
     } catch (e) {
       store.updateAlert(alertId, { status: 'pending' });
       log.error('[publish]', e.message);
       await api.sendMessage(cb.from.id, `❌ انتشار در کانال ناموفق بود: ${M.esc(e.description || e.message)}\n`
         + 'بات باید ادمینِ کانال باشد و اجازه‌ی ارسالِ پیام داشته باشد.');
+    }
+  }
+
+  /**
+   * سطرِ نهایی برای انتشار: تحلیلِ لحظه‌ی هشدار + ویرایش‌های ادمین.
+   * چارت فقط وقتی دوباره کشیده می‌شود که سطحی عوض شده باشد.
+   */
+  function finalRow(a) {
+    const snap = store.snapshot(a.id);
+    if (!snap) {
+      // فایلِ snapshot نیست (هشدارِ نسخه‌ی قبلی) — همان متن و عکسِ ذخیره‌شده
+      try {
+        return { row: null, png: readFileSync(a.chartPath) };
+      } catch {
+        return { error: 'فایل‌های این هشدار دیگر موجود نیست. از پنل «تحلیلِ دوباره» بزن.' };
+      }
+    }
+    if (!snap.result.plan) return { row: snap, png: chartFor(snap) };
+    const e = a.edits || {};
+    const plan = applyEdits(snap.result.plan, snap.result.direction, e);
+    const err = validatePlan(plan, snap.result.direction);
+    if (err) return { error: `پلنِ ویرایش‌شده نامعتبر است: ${err}` };
+    const row = { ...snap, result: { ...snap.result, plan } };
+    const levelsEdited = e.entry != null || e.sl != null || (e.tps && Object.keys(e.tps).length);
+    let png;
+    try {
+      png = levelsEdited ? chartFor(row) : readFileSync(a.chartPath);
+    } catch {
+      png = chartFor(row);
+    }
+    return { row, png };
+  }
+
+  // ───────────────────────────── ویرایشگرِ سیگنال
+  const FIELD_PROMPT = {
+    e: 'قیمتِ ورودِ تازه را بفرست.',
+    s: 'حد ضررِ تازه را بفرست.',
+    n: 'یادداشتِ تحلیل را بفرست — زیرِ تحلیل در کانال می‌آید. برای حذف، «حذف» بفرست.',
+  };
+  const promptFor = (f) => FIELD_PROMPT[f] || `قیمتِ تارگتِ ${Number(f.slice(1)) + 1} را بفرست، یا «حذف» تا این تارگت برداشته شود.`;
+
+  function editorView(a, snap, extra = {}) {
+    const dir = snap.result.direction;
+    return UI.editor({ alert: a, base: snap.result.plan, plan: applyEdits(snap.result.plan, dir, a.edits), direction: dir, ...extra });
+  }
+
+  async function onEditor(cb, alertId, f) {
+    const chat = cb.message?.chat.id;
+    const msgId = cb.message?.message_id;
+    const a = store.alert(alertId);
+    if (!a || a.status !== 'pending') return api.answer(cb.id, 'این هشدار دیگر در انتظار نیست.', true);
+    const snap = store.snapshot(alertId);
+    if (!snap?.result?.plan) return api.answer(cb.id, 'داده‌ی این هشدار دیگر موجود نیست. از پنل «تحلیلِ دوباره» بزن.', true);
+    const editors = a.editors || {};
+    const isEditorMsg = editors[chat] === msgId;
+
+    if (f === 'open') {
+      waiting.delete(String(chat));
+      await api.answer(cb.id);
+      const id = await show(chat, isEditorMsg ? msgId : editors[chat] || null, editorView(a, snap));
+      store.updateAlert(alertId, { editors: { ...editors, [chat]: id } });
+      return null;
+    }
+    if (f === 'e' || f === 's' || f === 'n' || /^t\d$/.test(f)) {
+      waiting.set(String(chat), { kind: 'edit', alertId, field: f, panel: msgId });
+      await api.answer(cb.id);
+      return show(chat, msgId, editorView(a, snap, { prompt: promptFor(f) }));
+    }
+    if (f === 'rv') {
+      store.updateAlert(alertId, { edits: {} });
+      await api.answer(cb.id, 'به پلنِ بات برگشت');
+      return show(chat, msgId, editorView(store.alert(alertId), snap));
+    }
+    if (f === 'pv') {
+      const final = finalRow(a);
+      if (final.error) return api.answer(cb.id, final.error, true);
+      await api.answer(cb.id, 'پیش‌نمایش پایین می‌آید');
+      const head = '👁 <b>پیش‌نمایش</b> — این‌ها هنوز در کانال نیستند.\n\n';
+      await sendPhotoWithText(chat, final.png, head + M.channelAnalysis(final.row, cfg, { note: a.edits?.note }));
+      return api.sendMessage(chat, head + M.channelSignal(final.row, cfg));
+    }
+    if (f === 'pub') {
+      const ok = await decide(cb, true, alertId);
+      if (ok === true) {
+        await api.editText(chat, msgId, `✅ <b>${M.esc(a.pretty)}</b> با تغییرات منتشر شد.`, []).catch(() => {});
+      }
+      return null;
+    }
+    if (f === 'x') {
+      waiting.delete(String(chat));
+      await api.answer(cb.id);
+      return api.deleteMessage(chat, msgId).catch(() => {});
+    }
+    return api.answer(cb.id);
+  }
+
+  async function onEditInput(msg, w) {
+    const chat = msg.chat.id;
+    api.deleteMessage(chat, msg.message_id).catch(() => {});
+    const a = store.alert(w.alertId);
+    const snap = store.snapshot(w.alertId);
+    if (!a || a.status !== 'pending' || !snap?.result?.plan) {
+      waiting.delete(String(chat));
+      return show(chat, w.panel, { text: 'این هشدار دیگر در انتظار نیست.', buttons: [] });
+    }
+    const raw = (msg.text || '').trim();
+    const edits = structuredClone(a.edits || {});
+    const f = w.field;
+    if (f === 'n') {
+      if (/^(حذف|-|delete)$/i.test(raw)) delete edits.note;
+      else edits.note = raw.slice(0, 400);
+    } else {
+      const remove = /^(حذف|delete|0)$/i.test(raw);
+      const num = Number(raw.replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[,٬\s]/g, '').replace('٫', '.'));
+      if (f[0] === 't' && remove) {
+        edits.tps = { ...edits.tps, [f.slice(1)]: null };
+      } else if (!(num > 0)) {
+        return show(chat, w.panel, editorView(a, snap, { prompt: promptFor(f), error: 'یک عددِ مثبت بفرست، مثلاً 79650.5' }));
+      } else if (f === 'e') edits.entry = num;
+      else if (f === 's') edits.sl = num;
+      else edits.tps = { ...edits.tps, [f.slice(1)]: num };
+    }
+    const plan = applyEdits(snap.result.plan, snap.result.direction, edits);
+    const err = validatePlan(plan, snap.result.direction);
+    if (err) return show(chat, w.panel, editorView(a, snap, { prompt: promptFor(f), error: err }));
+    waiting.delete(String(chat));
+    store.updateAlert(w.alertId, { edits });
+    return show(chat, w.panel, editorView(store.alert(w.alertId), snap));
+  }
+
+  // ───────────────────────────── پیگیریِ سیگنال‌ها
+  let tracking = false;
+  let trackTimer = null;
+
+  async function runTracker(now = Date.now()) {
+    if (tracking) return;
+    tracking = true;
+    try {
+      for (const sig of store.signals().filter((x) => x.status === 'open')) {
+        const need = Math.min(1000, Math.ceil((now - sig.lastT) / 300_000) + 2);
+        let candles;
+        try {
+          candles = await fetchFrom(sig.exchangeKey, sig.exSymbol, TRACK_TF, need);
+        } catch (e) {
+          log.warn(`[track] ${sig.pretty}: ${e.message}`);
+          continue;
+        }
+        const events = step(sig, candles, now);
+        store.putSignal(sig);
+        for (const e of events) {
+          const text = M.trackEventText(sig, e);
+          if (env.channelId) {
+            await api.sendMessage(env.channelId, text, { replyTo: sig.channelMsgId })
+              .catch((err) => log.error('[track] کانال:', err.message));
+          }
+          for (const chat of adminIds()) {
+            api.sendMessage(chat, `📈 <b>${M.esc(sig.pretty)}</b>\n${text}`).catch(() => {});
+          }
+        }
+      }
+    } finally {
+      tracking = false;
     }
   }
 
@@ -270,6 +474,7 @@ export function createBot({ api, env, cfg, log = console }) {
       case 'grp': return show(chat, msgId, UI.group(s, arg));
       case 'par': waiting.delete(String(chat)); return show(chat, msgId, UI.param(s, arg));
       case 'adm': return show(chat, msgId, UI.admins(s, isOwner(chat)));
+      case 'perf': return show(chat, msgId, UI.performance(s));
       case 'admadd':
         if (!isOwner(chat)) return show(chat, msgId, UI.admins(s, false));
         waiting.set(String(chat), { kind: 'admin', panel: msgId });
@@ -382,6 +587,11 @@ export function createBot({ api, env, cfg, log = console }) {
         await api.answer(cb.id, a1 === '1h' ? '✓' : 'استراتژی برای یک‌ساعته طراحی شده؛ این تغییر را با بک‌تست بسنج.', a1 !== '1h');
         return show(chat, msgId, UI.settings(s()));
 
+      case 'near':
+        setParam(cfg, 'nearAlerts', !cfg.nearAlerts);
+        await api.answer(cb.id, cfg.nearAlerts ? 'روشن شد' : 'خاموش شد');
+        return show(chat, msgId, UI.settings(s()));
+
       case 'th': {
         // آستانه از صفحه‌ی تنظیمات — همان‌جا بماند
         const p = paramById(60);
@@ -400,10 +610,7 @@ export function createBot({ api, env, cfg, log = console }) {
         const al = store.alert(a1);
         if (!al || al.status !== 'pending') return api.answer(cb.id, 'این هشدار دیگر در انتظار نیست.', true);
         await api.answer(cb.id);
-        const m = await sendPhotoWithText(chat, readFileSync(al.chartPath), al.caption, [[
-          { text: '✅ انتشار در کانال', callback_data: `ok:${al.id}` },
-          { text: '❌ رد', callback_data: `no:${al.id}` },
-        ]]);
+        const m = await sendPhotoWithText(chat, readFileSync(al.chartPath), al.caption, alertButtons(al.id));
         store.updateAlert(al.id, { messages: [...(al.messages || []), m] });
         return null;
       }
@@ -455,6 +662,7 @@ export function createBot({ api, env, cfg, log = console }) {
       screen.text = `${M.esc(report.join('\n'))}\n\n${screen.text}`;
       return show(chat, w.panel, screen);
     }
+    if (w.kind === 'edit') return onEditInput(msg, w);
     if (w.kind === 'admin') {
       // شناسه‌ی عددی، یا پیامی که از آن شخص فوروارد شده
       const fwd = msg.forward_origin?.sender_user || msg.forward_from;
@@ -555,6 +763,7 @@ export function createBot({ api, env, cfg, log = console }) {
     const msgId = cb.message?.message_id;
     const [kind, ...rest] = data.split(':');
     if (kind === 'ok' || kind === 'no') return decide(cb, kind === 'ok', rest[0]);
+    if (kind === 'ed') return onEditor(cb, rest[0], rest[1]);
     if (kind === 'nav') {
       await api.answer(cb.id);
       return navigate(chat, msgId, rest[0], rest[1]);
@@ -602,6 +811,9 @@ export function createBot({ api, env, cfg, log = console }) {
       { command: 'id', description: 'شناسه‌ی عددی' },
     ]).catch(() => {});
     schedule();
+    // پیگیری هر ۱۰ دقیقه — کندلِ ۵ دقیقه‌ای، پس دیرتر از ۱۵ دقیقه خبری نمی‌ماند
+    trackTimer = setInterval(() => runTracker().catch((e) => log.error('[track]', e)), 10 * 60_000);
+    setTimeout(() => runTracker().catch((e) => log.error('[track]', e)), 20_000);
     log.info(`[bot] @${me.username} آماده است · ادمین‌ها: ${adminIds().join(', ') || '—'}`
       + ` · اسکنِ بعدی ${utc(nextScanAt)} UTC`);
     for (const a of adminIds()) {
@@ -610,7 +822,7 @@ export function createBot({ api, env, cfg, log = console }) {
     return poll();
   }
 
-  return { start, runScan, commands, decide, schedule, onCallback, onMessage, state };
+  return { start, runScan, runTracker, commands, decide, schedule, onCallback, onMessage, state };
 }
 
 function withNote(screen, note) {

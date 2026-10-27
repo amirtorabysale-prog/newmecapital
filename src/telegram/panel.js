@@ -12,7 +12,9 @@
  */
 
 import { CONDITIONS, PARAMS, paramById, getPath, formatValue } from '../strategy/params.js';
-import { esc, strategyText, coinReport, rowIcon, verdict, TF_FA } from '../messages.js';
+import { esc, strategyText, coinReport, rowIcon, verdict, TF_FA, signR } from '../messages.js';
+import { summarize } from '../tracker.js';
+import { price } from '../format.js';
 import { SCAN_INTERVALS, TIMEFRAMES } from '../config.js';
 import { utc } from '../format.js';
 
@@ -38,6 +40,7 @@ export function home(s) {
     buttons: [
       [b('🔎 اسکنِ همین الان', 'act:scan')],
       [b('📊 نتایجِ آخرین اسکن', 'nav:res'), b('📋 واچ‌لیست', 'nav:wl')],
+      [b('📈 کارنامه‌ی سیگنال‌ها', 'nav:perf')],
       [b('🧠 استراتژی', 'nav:st'), b('⚙️ تنظیمات', 'nav:set')],
       [b(`🔔 در انتظارِ تأیید (${pending})`, 'nav:pend'), b('👥 ادمین‌ها', 'nav:adm')],
     ],
@@ -265,6 +268,8 @@ export function settings(s) {
       `↕️ <b>جهت:</b> ${{ long: 'فقط خرید', short: 'فقط فروش', both: 'خرید و فروش' }[dirKey]}`,
       `🎯 <b>آستانه‌ی هشدار:</b> ${cfg.alertThreshold} از 100`,
       `🔁 <b>تکرارِ هشدارِ یک ستاپ:</b> هر ${cfg.cooldownHours} ساعت حداکثر یک بار`,
+      `👀 <b>هشدارِ نزدیک شدن به خط:</b> ${cfg.nearAlerts ? 'روشن' : 'خاموش'}`,
+      `⏱ <b>پیگیریِ سیگنال:</b> تا ${cfg.maxHoldHours} ساعت بعد از انتشار`,
     ].join('\n'),
     buttons: [
       row(Object.keys(SCAN_INTERVALS).map((v) => [v, `⏱ ${v}`]), cfg.scanEvery, 'every'),
@@ -272,6 +277,8 @@ export function settings(s) {
       row([['long', 'خرید'], ['short', 'فروش'], ['both', 'هر دو']], dirKey, 'dir'),
       [b('🎯 − 5', 'act:th:-1'), b(`آستانه: ${cfg.alertThreshold}`, 'nav:par:60'), b('🎯 + 5', 'act:th:1')],
       [b(`🔁 تکرارِ هشدار: ${cfg.cooldownHours} ساعت`, 'nav:par:61')],
+      [b(`👀 هشدارِ نزدیک شدن: ${cfg.nearAlerts ? 'روشن' : 'خاموش'}`, 'act:near')],
+      [b(`⏱ عمرِ پیگیری: ${cfg.maxHoldHours} ساعت`, 'nav:par:63')],
       [HOME],
     ],
   };
@@ -347,4 +354,84 @@ export function confirmAdminRemove(s, id) {
     text: `🗑 دسترسیِ <b>${esc(name)}</b> برداشته شود؟\nدیگر هشدار نمی‌گیرد و پنل برایش باز نمی‌شود.`,
     buttons: [[b('بله، حذف کن', `act:arm:${id}`), b('نه', 'nav:adm')]],
   };
+}
+
+const OUTCOME = { tp_all: '🏆 همه‌ی تارگت‌ها', sl: '🛑 حد ضرر', be: '⚪️ سر‌به‌سر', expired: '⏱ پایانِ زمان' };
+
+export function performance(s) {
+  const { signals } = s;
+  const st = summarize(signals);
+  const ago = (t) => {
+    const h = (Date.now() - t) / 3_600_000;
+    return h < 24 ? `${Math.round(h)} ساعت پیش` : `${Math.round(h / 24)} روز پیش`;
+  };
+  if (!signals.length) {
+    return {
+      text: '📈 <b>کارنامه</b>\n\nهنوز سیگنالی منتشر نشده.\nبعد از اولین انتشار، بات قیمت را دنبال می‌کند و هر تارگت یا حد ضرر را در کانال اعلام و این‌جا ثبت می‌کند.',
+      buttons: [[HOME]],
+    };
+  }
+  const open = signals.filter((x) => x.status === 'open').sort((a, b) => b.publishedAt - a.publishedAt);
+  const closed = signals.filter((x) => x.status === 'closed').sort((a, b) => b.closedAt - a.closedAt);
+  const lines = [
+    '📈 <b>کارنامه‌ی سیگنال‌ها</b>',
+    '',
+    `منتشرشده <b>${st.total}</b> · باز ${st.open} · بسته ${st.closed}`,
+  ];
+  if (st.closed) {
+    lines.push(
+      `موفق (دست‌کم تارگتِ ۱): <b>${st.wins}</b> (${Math.round(st.winRate * 100)}٪) · حد ضرر ${st.losses}`,
+      `جمع <b>${signR(st.totalR)}</b> · میانگینِ هر سیگنال ${signR(st.avgR)}`,
+    );
+  }
+  if (open.length) {
+    lines.push('', '<b>در جریان:</b>');
+    for (const x of open.slice(0, 8)) {
+      lines.push(`• ${esc(x.pretty)} — ${x.hits ? `تارگتِ ${x.hits} خورده، حد ضرر روی ورود` : `ورود ${price(x.entry)}`} · ${ago(x.publishedAt)}`);
+    }
+  }
+  if (closed.length) {
+    lines.push('', '<b>آخرین بسته‌شده‌ها:</b>');
+    for (const x of closed.slice(0, 10)) {
+      const what = x.outcome === 'tp_all' || x.outcome === 'sl' ? OUTCOME[x.outcome]
+        : x.hits ? `✅ تا تارگتِ ${x.hits}، بعد ${OUTCOME[x.outcome]}` : OUTCOME[x.outcome];
+      lines.push(`• ${esc(x.pretty)} — ${what} · <b>${signR(x.realized)}</b> · ${ago(x.closedAt)}`);
+    }
+  }
+  lines.push('', '<i>R = واحدِ ریسک. سهمِ مساوی در هر تارگت، بعد از تارگتِ ۱ حد ضرر روی ورود.</i>');
+  return { text: lines.join('\n'), buttons: [[b('🔄 به‌روز کن', 'nav:perf'), HOME]] };
+}
+
+/** ویرایشگرِ سیگنال — پیامِ جدا از پنل، زیرِ عکسِ هشدار */
+export function editor({ alert, base, plan, direction, error, prompt }) {
+  const e = alert.edits || {};
+  const P = (v) => price(v, base.entry);
+  const mark = (edited) => (edited ? ' ✏️' : '');
+  const up = direction !== 'short';
+  const lines = [
+    `✏️ <b>ویرایشِ سیگنال — ${esc(alert.pretty)}</b> (${up ? 'خرید' : 'فروش'})`,
+    '',
+    `📍 ورود: <code>${P(plan.entry)}</code>${mark(e.entry != null)}`,
+    `🛑 حد ضرر: <code>${P(plan.sl)}</code> (${Math.abs(plan.riskPct).toFixed(2)}٪)${mark(e.sl != null)}`,
+    ...base.tps.map((t, i) => {
+      const edited = e.tps && Object.hasOwn(e.tps, i);
+      if (edited && e.tps[i] === null) return `🎯 تارگتِ ${i + 1}: <s>${P(t.price)}</s> — حذف شد`;
+      const v = edited ? e.tps[i] : t.price;
+      const rr = (up ? v - plan.entry : plan.entry - v) / plan.risk;
+      return `🎯 تارگتِ ${i + 1}: <code>${P(v)}</code> (${rr.toFixed(1)}R)${mark(edited)}`;
+    }),
+    e.note ? `\n📝 یادداشت: ${esc(e.note)}` : '',
+    '',
+    error ? `⚠️ ${esc(error)}` : (prompt ? `👉 ${prompt}` : 'روی هر مورد بزن تا عوضش کنی. استراتژی دست نمی‌خورد؛ فقط همین سیگنال.'),
+  ];
+  const id = alert.id;
+  const buttons = prompt ? [[b('🔙 لغو', `ed:${id}:open`)]] : [
+    [b('📍 ورود', `ed:${id}:e`), b('🛑 حد ضرر', `ed:${id}:s`)],
+    base.tps.map((t, i) => b(`🎯 تارگتِ ${i + 1}`, `ed:${id}:t${i}`)),
+    [b(e.note ? '📝 ویرایشِ یادداشت' : '📝 افزودنِ یادداشتِ تحلیل', `ed:${id}:n`)],
+    [b('👁 پیش‌نمایش', `ed:${id}:pv`), b('↩️ برگرداندنِ همه', `ed:${id}:rv`)],
+    [b('✅ انتشار با همین‌ها', `ed:${id}:pub`)],
+    [b('✖️ بستن', `ed:${id}:x`)],
+  ];
+  return { text: lines.filter((x, i, a) => x !== '' || a[i - 1] !== '').join('\n'), buttons };
 }

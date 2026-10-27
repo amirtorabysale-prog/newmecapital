@@ -33,6 +33,12 @@ globalThis.fetch = async (url) => {
   const u = String(url);
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
   if (u.includes('lbkex')) {
+    // کندل‌های ۵ دقیقه‌ایِ پیگیری: بعد از انتشار، قیمت تا globalThis.trackHigh بالا می‌رود
+    if (u.includes('type=minute5')) {
+      const t = Math.floor(Date.now() / 300_000) * 300_000;
+      const rows = [2, 1].map((n) => [(t - n * 300_000) / 1000, 112, globalThis.trackHigh ?? 112.5, 111.6, 112, 1]);
+      return json({ result: 'true', data: rows });
+    }
     if (u.includes('symbol=test_usdt')) return json({ result: 'true', data: shifted(longSetup()).map((k) => [k.t / 1000, k.o, k.h, k.l, k.c, k.v]) });
     if (u.includes('symbol=flat_usdt')) {
       const c = shifted(candlesFrom(path([[0, 100], [200, 60]])));
@@ -256,4 +262,91 @@ test('ادمین‌ها: مالک با شناسه یا فوروارد اضافه
   api.calls.length = 0;
   await bot.onMessage({ text: '/panel', from: { id: 5123456789 }, chat: { id: 5123456789 }, message_id: 10 });
   assert.ok(!api.calls.some((c) => /پنلِ بات/.test(c.args[1] || '')), 'ادمینِ حذف‌شده هنوز پنل دارد');
+});
+
+test('ویرایش ← انتشار با حد ضررِ تازه ← پیگیری تارگتِ ۱ را در کانال اعلام می‌کند', async () => {
+  const { cfg, api, bot, press, type } = setup();
+  cfg.cooldownHours = 0;
+  await press('act:chart:TEST');
+  const photo = api.calls.filter((c) => c.name === 'sendPhoto').at(-1);
+  const flat = photo.args[3].buttons.flat();
+  const editBtn = flat.find((b) => b.callback_data.startsWith('ed:'));
+  assert.ok(editBtn, 'هشدار دکمه‌ی ویرایش ندارد');
+  const id = editBtn.callback_data.split(':')[1];
+
+  // باز کردنِ ویرایشگر ← پیامِ تازه
+  await press(`ed:${id}:open`, photo.args[0] === 7 ? 1 : 1);
+  const editorMsg = api.calls.filter((c) => c.name === 'sendMessage').at(-1);
+  assert.match(editorMsg.args[1], /ویرایشِ سیگنال/);
+  const editorId = 500 + api.calls.filter((c) => ['sendPhoto', 'sendMessage'].includes(c.name)).length;
+
+  // حد ضررِ نامعتبر (بالای ورود) رد می‌شود
+  await press(`ed:${id}:s`, editorId);
+  await type('200');
+  let screen = api.calls.filter((c) => c.name === 'editText').at(-1).args[2];
+  assert.match(screen, /حد ضرر باید زیرِ ورود/);
+  // معتبر
+  await type('109.000');
+  screen = api.calls.filter((c) => c.name === 'editText').at(-1).args[2];
+  assert.match(screen, /109\.00<\/code>.*✏️/);
+
+  // یادداشت
+  await press(`ed:${id}:n`, editorId);
+  await type('حمایتِ هفتگی هم همین‌جاست');
+
+  // انتشار
+  api.calls.length = 0;
+  await press(`ed:${id}:pub`, editorId);
+  const toChannel = api.calls.filter((c) => c.args[0] === '@c');
+  assert.equal(toChannel.length, 2, 'تحلیل و سیگنال باید در کانال بروند');
+  assert.match(toChannel[0].args[2] || toChannel[0].args[1], /حمایتِ هفتگی/);
+  assert.match(toChannel[1].args[1], /حد ضرر: <code>109\.00<\/code>/);
+
+  // پیگیری
+  const sig = bot.state().signals.find((x) => x.id === id);
+  assert.ok(sig, 'سیگنال در پیگیری ثبت نشد');
+  assert.equal(sig.sl, 109);
+  sig.lastT = sig.publishedAt - 20 * 60_000;
+  globalThis.trackHigh = 121;
+  api.calls.length = 0;
+  await bot.runTracker();
+  const ann = api.calls.find((c) => c.args[0] === '@c');
+  assert.match(ann.args[1], /تارگتِ 1 خورد/);
+  assert.equal(ann.args[2].replyTo, sig.channelMsgId);
+  assert.equal(sig.hits, 1);
+  globalThis.trackHigh = undefined;
+
+  // کارنامه
+  await press('nav:perf');
+  assert.match(api.calls.filter((c) => c.name === 'editText').at(-1).args[2], /تارگتِ 1 خورده/);
+});
+
+test('هشدارِ نزدیک شدن: یک بار برای هر ستاپ، و با خاموش کردن نمی‌آید', async () => {
+  const { cfg, api, bot } = setup();
+  cfg.watchlist = [{ id: 'TESTUSDT', base: 'TEST' }];
+  // تحملِ برخورد را کوچک کن تا همان ستاپ «در حالِ نزدیک شدن» دیده شود
+  cfg.strategy.trendline.touchToleranceAtr = 0.1;
+  cfg.strategy.trendline.approachAtr = 3;
+  const realLow = await import('../src/scanner.js');
+  void realLow;
+  // کفِ آخر را کمی بالاتر از خط ببر
+  const orig = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('symbol=test_usdt') && u.includes('hour1')) {
+      const c = shifted(longSetup());
+      for (const k of c.slice(-3)) { k.l += 1.2; k.o += 1.2; k.c += 1.2; k.h += 1.2; }
+      return new Response(JSON.stringify({ result: 'true', data: c.map((k) => [k.t / 1000, k.o, k.h, k.l, k.c, k.v]) }));
+    }
+    return orig(url);
+  };
+  try {
+    await bot.runScan();
+    const near = api.calls.filter((c) => c.name === 'sendMessage' && /نزدیک می‌شود/.test(c.args[1]));
+    assert.equal(near.length, 1, 'هشدارِ نزدیک شدن نیامد');
+    await bot.runScan();
+    assert.equal(api.calls.filter((c) => c.name === 'sendMessage' && /نزدیک می‌شود/.test(c.args[1])).length, 1, 'تکراری آمد');
+  } finally {
+    globalThis.fetch = orig;
+  }
 });

@@ -9,11 +9,11 @@
  * تصمیم می‌گیرد؛ الگوی کندلیِ نیمه‌کاره ده دقیقه بعد ممکن است کاملاً برعکس شود.
  */
 
-export const TF_MS = { '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
+export const TF_MS = { '5m': 300_000, '1h': 3_600_000, '4h': 14_400_000, '1d': 86_400_000 };
 
-const TF_LBANK = { '1h': 'hour1', '4h': 'hour4', '1d': 'day1' };
-const TF_MEXC = { '1h': '60m', '4h': '4h', '1d': '1d' };
-const TF_BITGET = { '1h': '1h', '4h': '4h', '1d': '1day' };
+const TF_LBANK = { '5m': 'minute5', '1h': 'hour1', '4h': 'hour4', '1d': 'day1' };
+const TF_MEXC = { '5m': '5m', '1h': '60m', '4h': '4h', '1d': '1d' };
+const TF_BITGET = { '5m': '5min', '1h': '1h', '4h': '4h', '1d': '1day' };
 
 async function getJson(url) {
   const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
@@ -133,6 +133,16 @@ export function closedOnly(candles, tf, now = Date.now()) {
  */
 export const EXCHANGE_LABELS = () => Object.fromEntries(Object.entries(ADAPTERS).map(([k, v]) => [k, v.label]));
 
+/**
+ * از یک صرافیِ مشخص — برای پیگیریِ سیگنال: قیمتِ تارگت از همان صرافی آمده و
+ * باید با همان سنجیده شود، نه با صرافیِ دیگری که چند صدم فرق دارد.
+ */
+export async function fetchFrom(exchangeKey, symbol, tf, limit) {
+  const ad = ADAPTERS[exchangeKey];
+  if (!ad) throw new Error(`صرافیِ ناشناخته: ${exchangeKey}`);
+  return closedOnly(await ad.fetch(symbol, tf, limit), tf);
+}
+
 export async function fetchCandles(item, { exchanges, timeframe, candles: limit, minCandles = 150 }) {
   const tried = [];
   for (const name of exchanges) {
@@ -145,7 +155,7 @@ export async function fetchCandles(item, { exchanges, timeframe, candles: limit,
         tried.push({ exchange: ad.label, error: `فقط ${rows.length} کندل` });
         continue;
       }
-      return { candles: rows, exchange: ad.label, symbol, pretty: ad.pretty(symbol), tried };
+      return { candles: rows, exchange: ad.label, exchangeKey: name, symbol, pretty: ad.pretty(symbol), tried };
     } catch (err) {
       tried.push({ exchange: ad.label, error: err.message });
     }

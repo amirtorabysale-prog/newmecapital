@@ -87,6 +87,8 @@ export const PARAMS = [
   // عمومی
   { id: 60, group: 'general', path: 'alertThreshold', fa: 'آستانه‌ی هشدار', unit: 'از 100', step: 5, min: 30, max: 100 },
   { id: 61, group: 'general', path: 'cooldownHours', fa: 'فاصله‌ی تکرارِ هشدارِ یک ستاپ', unit: 'ساعت', step: 2, min: 1, max: 72 },
+  { id: 63, group: 'general', path: 'maxHoldHours', fa: 'حداکثر عمرِ پیگیریِ سیگنال', unit: 'ساعت', step: 12, min: 12, max: 336, about: 'سیگنالی که تا این زمان نه تارگتِ آخر و نه حد ضرر خورد، با قیمتِ همان لحظه بسته و در کارنامه ثبت می‌شود.' },
+  { id: 64, group: 'general', path: 'nearAlerts', fa: 'هشدارِ نزدیک شدن به خط', type: 'bool', about: 'وقتی قیمتِ یک ارز به خط روند نزدیک می‌شود، پیش از ستاپ یک پیامِ کوتاه برای ادمین‌ها می‌آید.' },
   { id: 62, group: 'general', path: 'alertTtlHours', fa: 'اعتبارِ دکمه‌ی انتشار', unit: 'ساعت', step: 1, min: 1, max: 24 },
 ];
 
