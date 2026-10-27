@@ -15,7 +15,7 @@
  * همان 100 − RSI. این‌طوری منطقِ خرید و فروش هرگز از هم جدا نمی‌افتند.
  */
 
-import { atr, rsi } from './indicators.js';
+import { atr, ema, rsi } from './indicators.js';
 import { findTrendline, lineAt } from './trendline.js';
 import { findDivergence } from './divergence.js';
 import { findReversal } from './patterns.js';
@@ -34,7 +34,7 @@ export function analyze(candles, cfg, direction = 'long') {
 
 function analyzeLong(candles, cfg) {
   const s = cfg.strategy;
-  const W = s.weights;
+  const C = s.conditions;
   const last = candles.length - 1;
   const atrs = atr(candles, s.atrPeriod);
   const A = atrs[last];
@@ -46,12 +46,21 @@ function analyzeLong(candles, cfg) {
   const k = line.touchIdx;
   const touching = line.state === 'touch';
   const components = {};
-
-  components.trendline = {
-    points: touching ? W.trendline : W.trendline * 0.5,
-    max: W.trendline,
-    ok: touching,
+  // fraction: ۰ تا ۱ — چه سهمی از وزنِ این شرط برقرار است
+  const put = (key, fraction, extra = {}) => {
+    const c = C[key] || { enabled: false, weight: 0 };
+    components[key] = {
+      enabled: !!c.enabled,
+      required: !!c.required,
+      max: c.enabled ? c.weight : 0,
+      points: c.enabled ? c.weight * fraction : 0,
+      ok: fraction >= 1,
+      partial: fraction > 0 && fraction < 1,
+      ...extra,
+    };
   };
+
+  put('trendline', touching ? 1 : line.state === 'approach' ? 0.5 : 0);
 
   // ── فیبوناچی: از کفِ موج (پس از برخوردِ دوم) تا سقفِ موج
   let lowIdx = line.b;
@@ -60,14 +69,7 @@ function analyzeLong(candles, cfg) {
   const end = candles[line.highIdx].h;
   const fibPrice = end - s.fib.level * (end - start);
   const fibDist = Math.abs(fibPrice - lineAt(line, k)) / A;
-  const fibOk = fibDist <= s.fib.toleranceAtr;
-  const fibNear = !fibOk && fibDist <= s.fib.nearToleranceAtr;
-  components.fib = {
-    points: fibOk ? W.fib : fibNear ? W.fib * 0.5 : 0,
-    max: W.fib,
-    ok: fibOk,
-    near: fibNear,
-  };
+  put('fib', fibDist <= s.fib.toleranceAtr ? 1 : fibDist <= s.fib.nearToleranceAtr ? 0.5 : 0);
   const fib = {
     lowIdx, highIdx: line.highIdx, start, end,
     level: s.fib.level, price: fibPrice, distAtr: fibDist,
@@ -76,23 +78,38 @@ function analyzeLong(candles, cfg) {
 
   // ── واگرایی
   const div = findDivergence(candles, r, k, s.divergence);
-  components.divergence = { points: div ? W.divergence : 0, max: W.divergence, ok: !!div };
+  put('divergence', div ? 1 : 0);
 
   // ── الگوی کندلی: فقط وقتی معنا دارد که قیمت واقعاً روی خط است
   const candle = touching ? findReversal(candles, A, s.candles.window) : null;
-  components.candle = {
-    points: candle ? W.candle * candle.strength : 0,
-    max: W.candle,
-    ok: !!candle,
-  };
+  put('candle', candle ? candle.strength : 0);
 
-  const score = Math.round(Object.values(components).reduce((t, c) => t + c.points, 0));
-  const maxScore = Object.values(W).reduce((t, v) => t + v, 0);
+  // ── فیلترِ روند: قیمت بالای EMA — جلوی خریدِ خلافِ روندِ بزرگ را می‌گیرد
+  const e = ema(candles.map((x) => x.c), s.trendFilter.emaPeriod)[last];
+  const trend = { ema: e, period: s.trendFilter.emaPeriod, above: candles[last].c > e };
+  put('trendFilter', Number.isFinite(e) && trend.above ? 1 : 0);
+
+  // ── حجم: کندلِ برگشتی (یا کفِ برخورد) با حجمِ بالاتر از میانگین
+  const vi = candle ? candle.idx : k;
+  let vsum = 0;
+  let vn = 0;
+  for (let i = Math.max(0, vi - s.volume.period); i < vi; i++) { vsum += candles[i].v; vn++; }
+  const volume = { ratio: vn && vsum ? candles[vi].v / (vsum / vn) : 0, need: s.volume.multiplier };
+  put('volume', volume.ratio >= volume.need ? 1 : 0);
+
+  const list = Object.values(components).filter((c) => c.enabled);
+  const maxScore = list.reduce((t, c) => t + c.max, 0) || 1;
+  const points = list.reduce((t, c) => t + c.points, 0);
+  // شرطِ «الزامی» که هیچ امتیازی نگرفته، کلِ ستاپ را می‌بندد
+  const blocked = Object.entries(components).filter(([, c]) => c.enabled && c.required && c.points === 0).map(([key]) => key);
+  const score = line.state === 'far' ? 0 : Math.round((points / maxScore) * 100);
 
   return {
     score,
-    maxScore,
-    complete: Object.values(components).every((c) => c.ok),
+    maxScore: 100,
+    blocked,
+    alertable: !blocked.length && line.state !== 'far',
+    complete: list.every((c) => c.ok),
     lastIdx: last,
     atr: A,
     close: candles[last].c,
@@ -100,10 +117,13 @@ function analyzeLong(candles, cfg) {
     line: {
       a: line.a, b: line.b, p0: line.p0, slope: line.slope,
       touches: line.touches, touchIdx: k, distAtr: line.distAtr, state: line.state,
+      priceNow: lineAt(line, last),
     },
     fib,
     div,
     candle,
+    trend,
+    volume,
     plan: touching ? buildPlan(candles, line, fib, A, s.plan) : null,
   };
 }
@@ -140,6 +160,8 @@ function unmirror(res) {
   res.fib.start = neg(res.fib.start);
   res.fib.end = neg(res.fib.end);
   res.fib.price = neg(res.fib.price);
+  res.line.priceNow = neg(res.line.priceNow);
+  res.trend.ema = neg(res.trend.ema);
   if (res.div) {
     res.div.priceP = neg(res.div.priceP);
     res.div.priceK = neg(res.div.priceK);

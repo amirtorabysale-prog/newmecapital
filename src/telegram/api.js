@@ -59,6 +59,11 @@ export function createApi(token) {
     editCaption: (chatId, messageId, caption, buttons) => call('editMessageCaption', {
       chat_id: chatId, message_id: messageId, caption, parse_mode: 'HTML', reply_markup: kb(buttons || []),
     }),
+    editText: (chatId, messageId, text, buttons) => call('editMessageText', {
+      chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML',
+      link_preview_options: { is_disabled: true }, reply_markup: kb(buttons || []),
+    }),
+    deleteMessage: (chatId, messageId) => call('deleteMessage', { chat_id: chatId, message_id: messageId }),
     answer: (id, text, alert = false) => call('answerCallbackQuery', { callback_query_id: id, text, show_alert: alert }),
     setCommands: (commands) => call('setMyCommands', { commands }),
   };

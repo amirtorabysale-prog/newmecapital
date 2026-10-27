@@ -92,7 +92,7 @@ for (const item of items) {
     const off = i - win.length + 1;
     for (const dir of cfg.directions) {
       const res = analyze(win, cfg, dir);
-      if (!res || !res.plan || res.score < threshold) continue;
+      if (!res || !res.plan || !res.alertable || res.score < threshold) continue;
       const key = `${dir}:${win[res.line.a].t}:${win[res.line.b].t}`;
       const prev = seen.get(key);
       if (prev !== undefined && c[i].t - prev < cfg.cooldownHours * 3_600_000) continue;

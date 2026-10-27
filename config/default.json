@@ -10,7 +10,7 @@
     { "id": "MAGMAUSDT", "base": "MAGMA" }
   ],
 
-  "exchanges": ["lbank", "binance", "binanceFutures"],
+  "exchanges": ["lbank", "binance", "mexc", "gate", "bitget", "binanceFutures"],
   "timeframe": "1h",
   "candles": 400,
   "scanEvery": "4h",
@@ -23,6 +23,15 @@
   "strategy": {
     "atrPeriod": 14,
     "rsiPeriod": 14,
+
+    "conditions": {
+      "trendline":   { "enabled": true,  "weight": 30, "required": true },
+      "fib":         { "enabled": true,  "weight": 25, "required": false },
+      "divergence":  { "enabled": true,  "weight": 25, "required": false },
+      "candle":      { "enabled": true,  "weight": 20, "required": false },
+      "trendFilter": { "enabled": false, "weight": 15, "required": true },
+      "volume":      { "enabled": false, "weight": 10, "required": false }
+    },
 
     "trendline": {
       "lookback": 250,
@@ -54,11 +63,13 @@
       "window": 2
     },
 
-    "weights": {
-      "trendline": 30,
-      "fib": 25,
-      "divergence": 25,
-      "candle": 20
+    "trendFilter": {
+      "emaPeriod": 200
+    },
+
+    "volume": {
+      "period": 20,
+      "multiplier": 1.3
     },
 
     "plan": {

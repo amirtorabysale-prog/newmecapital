@@ -56,3 +56,18 @@ export function pivotLows(candles, left, right = left) {
   }
   return out;
 }
+
+export function ema(values, period) {
+  const out = new Array(values.length).fill(NaN);
+  if (values.length < period) return out;
+  let e = 0;
+  for (let i = 0; i < period; i++) e += values[i];
+  e /= period;
+  out[period - 1] = e;
+  const k = 2 / (period + 1);
+  for (let i = period; i < values.length; i++) {
+    e = values[i] * k + e * (1 - k);
+    out[i] = e;
+  }
+  return out;
+}

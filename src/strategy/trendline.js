@@ -15,6 +15,8 @@
  * `touchWindow` کندلِ آخر است. وضعیت:
  *   touch    : فاصله تا خط ≤ touchToleranceAtr
  *   approach : فاصله ≤ approachAtr — قیمت دارد نزدیک می‌شود
+ *   far      : خطِ معتبر هست ولی قیمت از آن دور است — فقط برای توضیح و تصویر،
+ *              هیچ‌وقت هشدار نمی‌دهد
  */
 
 import { pivotLows } from './indicators.js';
@@ -73,7 +75,7 @@ function evaluate(candles, line, k, A, piv, cfg) {
   let state = null;
   if (distAtr <= cfg.touchToleranceAtr) state = 'touch';
   else if (distAtr <= cfg.approachAtr) state = 'approach';
-  if (!state) return null;
+  else state = 'far';
 
   // برخوردهای اضافه (غیر از a و b) — خط را معتبرتر می‌کنند
   const extra = piv.filter((p) => p > a && p < k && p !== b
@@ -101,7 +103,8 @@ function maxAbove(candles, line, from, to) {
 
 function better(x, y) {
   if (!y) return true;
-  if (x.state !== y.state) return x.state === 'touch';
+  const rank = { touch: 0, approach: 1, far: 2 };
+  if (x.state !== y.state) return rank[x.state] < rank[y.state];
   if (x.touches.length !== y.touches.length) return x.touches.length > y.touches.length;
   const dx = Math.abs(x.distAtr);
   const dy = Math.abs(y.distAtr);
