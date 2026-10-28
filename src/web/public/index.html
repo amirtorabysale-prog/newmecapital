@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>چارت زنده</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="bar">
+  <select id="coin" aria-label="ارز"></select>
+  <div class="seg" id="dir">
+    <button data-dir="long" class="on">خرید</button>
+    <button data-dir="short">فروش</button>
+  </div>
+  <div id="score" class="score">—</div>
+</header>
+
+<div id="charts">
+  <div id="price"></div>
+  <div id="rsi"></div>
+  <div id="loading" class="overlay">در حالِ گرفتنِ کندل‌ها…</div>
+</div>
+
+<div class="tools">
+  <button id="draw">✏️ رسمِ خطِ استاد</button>
+  <button id="clear" hidden>✖ پاک کردنِ خط</button>
+  <span id="hint" class="hint"></span>
+</div>
+
+<section id="fit" class="card" hidden></section>
+<section id="chips" class="chips"></section>
+<section id="info" class="info"></section>
+
+<main id="controls"></main>
+
+<footer class="savebar" id="savebar" hidden>
+  <span id="dirty"></span>
+  <button id="revert" class="ghost">برگرداندن</button>
+  <button id="save" class="primary">ذخیره در بات</button>
+</footer>
+<div id="toast" class="toast" hidden></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

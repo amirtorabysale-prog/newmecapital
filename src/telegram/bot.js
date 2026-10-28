@@ -21,11 +21,12 @@ import { TRACK_TF, MAX_5M, catchUp, needsCatchUp, newSignal, step } from '../tra
 import { applyEdits, validatePlan, hasEdits, checkLivePrice } from '../planEdit.js';
 import { renderChart } from '../chart/render.js';
 import { store, dataDir } from '../store.js';
-import { PARAMS, paramById, getPath, coerce } from '../strategy/params.js';
+import { PARAMS, CONDITIONS, paramById, getPath, coerce, formatValue } from '../strategy/params.js';
 import * as M from '../messages.js';
 import * as UI from './panel.js';
 import { utc } from '../format.js';
 import { normalizeChannel, checkChannel } from '../channel.js';
+import { webAppUrl } from '../web/server.js';
 
 const CAPTION_MAX = 1024;
 
@@ -79,6 +80,7 @@ export function createBot({ api, env, cfg, log = console }) {
     names: store.get().names || {},
     signals: store.signals(),
     channel: { id: channelId(), status: channelStatus, fromPanel: !!cfg.channel?.id },
+    webApp: webAppUrl(),
   });
 
   // ───────────────────────────── زمان‌بندی
@@ -937,7 +939,18 @@ export function createBot({ api, env, cfg, log = console }) {
     return poll();
   }
 
-  return { start, runScan, runTracker, commands, decide, schedule, onCallback, onMessage, state };
+  /** ذخیره از چارتِ زنده ← خبر به همه‌ی ادمین‌ها، تا تغییرِ استراتژی بی‌صدا نماند */
+  function onWebSave(user, changes) {
+    const who = M.esc([user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || String(user.id));
+    const lines = changes.map((c) => {
+      const where = CONDITIONS[c.p.group]?.fa;
+      return `• ${M.esc(where ? `${where} ← ${c.p.fa}` : c.p.fa)}: ${M.esc(formatValue(c.p, c.from))} → <b>${M.esc(formatValue(c.p, c.to))}</b>`;
+    });
+    const text = `📈 <b>${who}</b> از چارتِ زنده استراتژی را عوض کرد:\n${lines.join('\n')}\n\nاز اسکنِ بعدی اعمال می‌شود.`;
+    for (const a of adminIds()) api.sendMessage(a, text).catch(() => {});
+  }
+
+  return { start, runScan, runTracker, commands, decide, schedule, onCallback, onMessage, state, isAdmin, onWebSave };
 }
 
 function withNote(screen, note) {

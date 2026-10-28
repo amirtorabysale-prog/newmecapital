@@ -8,6 +8,7 @@ import { loadConfig, loadEnv } from './config.js';
 import { createApi } from './telegram/api.js';
 import { createBot } from './telegram/bot.js';
 import { checkFonts } from './chart/render.js';
+import { createWebServer, webAppUrl } from './web/server.js';
 
 const env = loadEnv();
 const problems = [];
@@ -35,6 +36,14 @@ try {
 process.on('unhandledRejection', (e) => console.error('[unhandledRejection]', e));
 
 const bot = createBot({ api: createApi(env.token), env, cfg });
+
+// چارتِ زنده (Mini App). Railway پورت را در PORT می‌دهد؛ دکمه‌ی تلگرام فقط
+// وقتی ظاهر می‌شود که دامنه‌ی عمومی باشد (Settings ← Networking ← Generate Domain).
+const web = createWebServer({ cfg, token: env.token, isAdmin: bot.isAdmin, onSaved: bot.onWebSave });
+web.listen(Number(process.env.PORT) || 8080)
+  .then((port) => console.log(`[web] چارتِ زنده روی پورتِ ${port} · ${webAppUrl() || 'بدونِ دامنه‌ی عمومی — دکمه پنهان است'}`))
+  .catch((e) => console.error('[web] بالا نیامد:', e.message));
+
 bot.start().catch((e) => {
   console.error('❌ اتصال به تلگرام ناموفق:', e.message);
   process.exit(1);

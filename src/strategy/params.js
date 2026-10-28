@@ -64,6 +64,7 @@ export const PARAMS = [
   { id: 5, group: 'trendline', path: 'strategy.trendline.lookback', fa: 'بازه‌ی جست‌وجو', unit: 'کندل', step: 25, min: 50, max: 380, about: 'خط روند در این تعداد کندلِ آخر جست‌وجو می‌شود.' },
   { id: 6, group: 'trendline', path: 'strategy.trendline.minSpacing', fa: 'حداقلِ فاصله‌ی دو برخورد', unit: 'کندل', step: 2, min: 3, max: 60 },
   { id: 7, group: 'trendline', path: 'strategy.trendline.breakToleranceAtr', fa: 'تحملِ شکست', unit: 'ATR', step: 0.05, min: 0, max: 1, about: 'بسته شدنِ کندل تا این مقدار زیرِ خط هنوز شکست حساب نمی‌شود.' },
+  { id: 8, group: 'trendline', path: 'strategy.trendline.maxWickPierceAtr', fa: 'تحملِ سایه', unit: 'ATR', step: 0.1, min: 0, max: 3, about: 'سایه‌ی کندل تا این مقدار می‌تواند از خط رد شود و خط هنوز معتبر است.' },
 
   // فیبو
   { id: 10, group: 'fib', path: 'strategy.fib.level', fa: 'سطحِ فیبو', type: 'choice', choices: [0.382, 0.5, 0.618, 0.705, 0.786], about: 'سطحی که باید روی خط بنشیند.' },

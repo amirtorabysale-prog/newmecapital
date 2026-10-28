@@ -20,6 +20,8 @@ import { utc } from '../format.js';
 
 const b = (text, data) => ({ text, callback_data: data });
 const HOME = b('🏠 خانه', 'nav:home');
+// Mini App ِ چارتِ زنده — فقط وقتی دامنه‌ی عمومی هست (WEBAPP_URL یا دامنه‌ی Railway)
+const liveBtn = (url) => (url ? [{ text: '📈 چارتِ زنده و تنظیمِ استراتژی', web_app: { url } }] : null);
 const pairs = (arr) => arr.reduce((rows, x, i) => (i % 2 ? rows[rows.length - 1].push(x) : rows.push([x]), rows), []);
 const check = (on) => (on ? '✓ ' : '');
 
@@ -42,8 +44,9 @@ export function home(s) {
       [b('📊 نتایجِ آخرین اسکن', 'nav:res'), b('📋 واچ‌لیست', 'nav:wl')],
       [b('📈 کارنامه‌ی سیگنال‌ها', 'nav:perf')],
       [b('🧠 استراتژی', 'nav:st'), b('⚙️ تنظیمات', 'nav:set')],
+      liveBtn(s.webApp),
       [b(`🔔 در انتظارِ تأیید (${pending})`, 'nav:pend'), b('👥 ادمین‌ها', 'nav:adm')],
-    ],
+    ].filter(Boolean),
   };
 }
 
@@ -149,13 +152,15 @@ export function strategy(s) {
     return b(`${icon} ${CONDITIONS[key].fa}${c.enabled ? ` · ${c.weight}` : ''}`, `nav:cond:${key}`);
   });
   return {
-    text: strategyText(cfg) + '\n\nروی هر شرط بزن تا عددهایش را عوض کنی، روشن/خاموشش کنی یا الزامی‌اش کنی.',
+    text: strategyText(cfg) + '\n\nروی هر شرط بزن تا عددهایش را عوض کنی، روشن/خاموشش کنی یا الزامی‌اش کنی.'
+      + (s.webApp ? '\nیا با «چارتِ زنده» روی چارتِ واقعی تنظیمش کن و خطِ استاد را رسم کن.' : ''),
     buttons: [
+      liveBtn(s.webApp),
       ...pairs(condBtns),
       [b('📐 پلنِ معامله', 'nav:grp:plan'), b('🎯 آستانه و هشدار', 'nav:grp:general')],
       [b('♻️ همه به پیش‌فرض', 'act:reset?')],
       [HOME],
-    ],
+    ].filter(Boolean),
   };
 }
 
