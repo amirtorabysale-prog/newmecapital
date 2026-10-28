@@ -73,6 +73,7 @@ export const PARAMS = [
 
   // واگرایی
   { id: 20, group: 'divergence', path: 'strategy.rsiPeriod', fa: 'دوره‌ی RSI', unit: 'کندل', step: 1, min: 5, max: 30 },
+  { id: 19, group: 'divergence', path: 'strategy.divergence.pivotStrength', fa: 'قدرتِ کفِ قبلی', unit: 'کندل هر طرف', step: 1, min: 2, max: 10, about: 'کفِ قبلیِ واگرایی باید پایین‌ترینِ این تعداد کندل در دو طرفش باشد.' },
   { id: 21, group: 'divergence', path: 'strategy.divergence.lookback', fa: 'بازه‌ی جست‌وجو', unit: 'کندل', step: 10, min: 20, max: 200 },
   { id: 22, group: 'divergence', path: 'strategy.divergence.minGap', fa: 'حداقلِ فاصله‌ی دو کف', unit: 'کندل', step: 1, min: 3, max: 40 },
   { id: 23, group: 'divergence', path: 'strategy.divergence.minRsiDelta', fa: 'حداقلِ اختلافِ RSI', unit: 'واحد', step: 0.5, min: 0.5, max: 20 },

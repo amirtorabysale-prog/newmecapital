@@ -8,7 +8,7 @@ import { analyze, mirrorCandles } from './strategy/analyze.js';
 import { lineAt } from './strategy/trendline.js';
 import { rsi } from './strategy/indicators.js';
 import { PARAMS, CONDITIONS, getPath, setPath, coerce, formatValue } from './strategy/params.js';
-import { fitLine, snapLow } from './strategy/fit.js';
+import { fitLine, fitDivergence, snapLow } from './strategy/fit.js';
 
 const tg = window.Telegram?.WebApp;
 tg?.ready();
@@ -35,7 +35,10 @@ const S = {
   data: null,
   dir: 'long',
   res: null,
-  draw: false,
+  // حالتِ رسم: null، 'line' (خطِ روند) یا 'div' (واگرایی)
+  draw: null,
+  // آخرین رسمِ استاد از کدام نوع بود
+  kind: 'line',
   pts: [],
   fit: null,
 };
@@ -94,6 +97,7 @@ const teacherS = chart.addLineSeries({ color: C.teacher, lineWidth: 2, lineStyle
 const divS = chart.addLineSeries({ color: C.div, lineWidth: 2, lineStyle: 2, ...quiet });
 const rsiS = rsiChart.addLineSeries({ color: '#e2e8f0', lineWidth: 1, ...quiet, lastValueVisible: true });
 const rsiDivS = rsiChart.addLineSeries({ color: C.div, lineWidth: 2, lineStyle: 2, ...quiet });
+const teacherRsiS = rsiChart.addLineSeries({ color: C.teacher, lineWidth: 2, lineStyle: 2, ...quiet });
 let priceLines = [];
 let rsiLines = [];
 
@@ -178,13 +182,20 @@ function draw() {
     rsiDivS.setData([]);
   }
 
-  // خطِ استاد
+  // رسمِ استاد: خطِ روند تا آخرِ چارت ادامه دارد؛ واگرایی فقط بینِ دو کف، روی قیمت و RSI
+  teacherS.setData([]);
+  teacherRsiS.setData([]);
   if (S.pts.length === 2) {
     const [a, b] = [...S.pts].sort((x, y) => x - y);
     const y = (i) => (long ? cs[i].l : cs[i].h);
-    const slope = (y(b) - y(a)) / (b - a);
-    seg(teacherS, [{ time: T(a), value: y(a) }, { time: T(last), value: y(a) + slope * (last - a) }]);
-  } else teacherS.setData([]);
+    if (S.kind === 'div') {
+      seg(teacherS, [{ time: T(a), value: y(a) }, { time: T(b), value: y(b) }]);
+      if (Number.isFinite(r[a]) && Number.isFinite(r[b])) seg(teacherRsiS, [{ time: T(a), value: r[a] }, { time: T(b), value: r[b] }]);
+    } else {
+      const slope = (y(b) - y(a)) / (b - a);
+      seg(teacherS, [{ time: T(a), value: y(a) }, { time: T(last), value: y(a) + slope * (last - a) }]);
+    }
+  }
   S.pts.forEach((i, n) => markers.push({ time: T(i), position: long ? 'belowBar' : 'aboveBar', color: C.teacher, shape: 'circle', text: n ? 'B' : 'A' }));
 
   markers.sort((x, y) => x.time - y.time);
@@ -361,12 +372,17 @@ function revert() {
   recompute();
 }
 
-// ───────────────────────────── خطِ استاد
+// ───────────────────────────── رسمِ استاد (خطِ روند / واگرایی)
 
-function setDraw(on) {
-  S.draw = on;
-  $('draw').classList.toggle('on', on);
-  $('hint').textContent = on ? `روی ${S.dir === 'long' ? 'کفِ' : 'سقفِ'} اول بزن، بعد روی دومی.` : '';
+function setDraw(mode) {
+  S.draw = mode;
+  if (mode) S.kind = mode;
+  $('draw').classList.toggle('on', mode === 'line');
+  $('drawDiv').classList.toggle('on', mode === 'div');
+  const low = S.dir === 'long' ? 'کفِ' : 'سقفِ';
+  $('hint').textContent = !mode ? ''
+    : mode === 'div' ? `روی ${low} قبلی بزن، بعد روی ${low} برخورد به خط (دایره‌ی «روی خط»).`
+      : `روی ${low} اول بزن، بعد روی دومی.`;
 }
 
 chart.subscribeClick((param) => {
@@ -381,9 +397,9 @@ chart.subscribeClick((param) => {
   tg?.HapticFeedback?.selectionChanged();
   $('clear').hidden = false;
   if (S.pts.length === 2) {
-    setDraw(false);
+    setDraw(null);
     runFit();
-  } else $('hint').textContent = `حالا ${S.dir === 'long' ? 'کفِ' : 'سقفِ'} دوم.`;
+  } else $('hint').textContent = `حالا ${S.dir === 'long' ? 'کفِ' : 'سقفِ'} ${S.draw === 'div' ? 'برخورد به خط' : 'دوم'}.`;
   draw();
 });
 
@@ -392,7 +408,13 @@ function runFit() {
   const src = S.dir === 'long' ? cs : mirrorCandles(cs);
   const [a, b] = [...S.pts].sort((x, y) => x - y);
   const cfg = draftCfg();
-  S.fit = fitLine(src, cfg.strategy, a, b);
+  if (S.kind === 'div') {
+    const k = S.res?.line.touchIdx ?? null;
+    S.fit = { ...fitDivergence(src, cfg.strategy, a, b, k, S.dir === 'short'), kind: 'div' };
+    // بات کفِ دوم را روی خودِ کندلِ برخورد می‌گیرد؛ رسم هم همان را نشان دهد
+    if (k != null && Math.abs(b - k) <= 2) S.pts = [a, k];
+    draw();
+  } else S.fit = { ...fitLine(src, cfg.strategy, a, b), kind: 'line' };
   renderFit();
 }
 
@@ -402,21 +424,30 @@ function renderFit() {
   if (!f) { box.hidden = true; return; }
   box.hidden = false;
   const name = (path) => PARAMS.find((p) => p.path === path);
+  const div = f.kind === 'div';
+  const what = div ? 'واگرایی' : 'خط';
+  // برای واگرایی: نوع و RSI ِ دو کف (روی فروش RSI ِ واقعی = 100 − قرینه)
+  const rv = (v) => (S.dir === 'short' ? 100 - v : v).toFixed(1);
+  const note = div && f.type
+    ? el('p', { class: 'hint' }, `${f.type === 'regular' ? 'واگراییِ معمولی' : 'واگراییِ مخفی'} · RSI: ${rv(f.rsiP)} ← ${rv(f.rsiK)}`)
+    : '';
   if (!f.ok) {
     box.replaceChildren(
-      el('h3', {}, 'بات این خط را نمی‌تواند پیدا کند'),
+      el('h3', {}, `بات این ${what} را ${div ? 'قبول نمی‌کند' : 'نمی‌تواند پیدا کند'}`),
+      note,
       el('ul', {}, f.reasons.map((r) => el('li', {}, r))),
       el('div', { class: 'row' }, el('button', { onclick: clearTeacher }, 'پاک کردن')),
     );
     return;
   }
   if (!f.changes.length) {
-    box.replaceChildren(el('h3', {}, '✅ بات با تنظیماتِ فعلی همین خط را پیدا می‌کند'),
+    box.replaceChildren(el('h3', {}, `✅ بات با تنظیماتِ فعلی همین ${what} را پیدا می‌کند`), note,
       el('div', { class: 'row' }, el('button', { onclick: clearTeacher }, 'پاک کردن')));
     return;
   }
   box.replaceChildren(
-    el('h3', {}, 'برای این‌که بات همین خط را پیدا کند:'),
+    el('h3', {}, `برای این‌که بات همین ${what} را پیدا کند:`),
+    note,
     el('ul', {}, f.changes.map((c) => {
       const p = name(c.path);
       return el('li', {}, `${p.fa}: ${formatValue(p, c.from)} ← ${formatValue(p, c.to)}`);
@@ -443,7 +474,7 @@ function clearTeacher() {
   S.pts = [];
   S.fit = null;
   $('clear').hidden = true;
-  setDraw(false);
+  setDraw(null);
   renderFit();
   draw();
 }
@@ -498,7 +529,12 @@ async function main() {
       recompute();
     };
   }
-  $('draw').onclick = () => { if (S.pts.length === 2) clearTeacher(); setDraw(!S.draw); };
+  const toggle = (mode) => () => {
+    if (S.pts.length === 2 || (S.draw && S.draw !== mode)) clearTeacher();
+    setDraw(S.draw === mode ? null : mode);
+  };
+  $('draw').onclick = toggle('line');
+  $('drawDiv').onclick = toggle('div');
   $('clear').onclick = clearTeacher;
   $('save').onclick = save;
   $('revert').onclick = revert;

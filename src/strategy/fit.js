@@ -14,7 +14,8 @@
  * فروش: کندل‌ها را بیرون قرینه کن (mirrorCandles) و همین را صدا بزن.
  */
 
-import { atr } from './indicators.js';
+import { atr, rsi, pivotLows } from './indicators.js';
+import { findDivergence, rsiNear } from './divergence.js';
 import { findTrendline, lineAt } from './trendline.js';
 import { paramByPath } from './params.js';
 
@@ -151,6 +152,149 @@ export function fitLine(candles, strategy, a, b) {
   out.line = best.line;
   for (const [key, v] of Object.entries(best.over)) {
     if (v !== T[key]) out.changes.push({ path: `${P}${key}`, from: T[key], to: v });
+  }
+  return out;
+}
+
+/**
+ * «واگراییِ استاد ← تنظیماتِ بات»: استاد دو کف را می‌زند؛ بات واگرایی را فقط
+ * روی کندلِ برخورد به خط (k) می‌سنجد، پس کفِ دوم باید همان‌جا باشد.
+ * مثلِ fitLine: اول حدودِ لازم از خودِ داده، بعد اجرای واقعی و اگر کفِ قبلیِ
+ * دیگری (نزدیک‌تر به k) جلو افتاد، سخت‌گیرتر.
+ *
+ * کندل‌ها مثلِ fitLine برای فروش قرینه‌اند؛ `short` فقط برای این است که
+ * ناحیه‌ی اشباع از rsiZone.high خوانده/نوشته شود.
+ *
+ * @returns {{ ok: boolean, p: number, k: number|null, type: string|null, reasons: string[],
+ *            changes: {path: string, from: any, to: any}[], rsiP: number, rsiK: number }}
+ */
+export function fitDivergence(candles, strategy, a, b, k, short = false) {
+  if (a > b) [a, b] = [b, a];
+  const D = strategy.divergence;
+  const Z = strategy.rsiZone;
+  const last = candles.length - 1;
+  const reasons = [];
+  const out = { ok: false, p: a, k, type: null, reasons, changes: [], rsiP: null, rsiK: null };
+  if (k == null) {
+    reasons.push('با تنظیماتِ فعلی خطِ روندی پیدا نشده؛ بات واگرایی را فقط روی برخورد به خط می‌سنجد.');
+    return out;
+  }
+  if (Math.abs(b - k) > 2) {
+    reasons.push(`بات واگرایی را روی کندلِ برخورد به خط می‌سنجد؛ کفِ دومِ تو ${Math.abs(b - k)} کندل با آن فاصله دارد. کفِ دوم را روی برخورد بزن.`);
+    return out;
+  }
+  const p = a;
+  if (p >= k) {
+    reasons.push('کفِ اول باید قبل از کندلِ برخورد باشد.');
+    return out;
+  }
+
+  const r = rsi(candles.map((x) => x.c), strategy.rsiPeriod);
+  const rp = rsiNear(r, p, last);
+  const rk = rsiNear(r, k, last);
+  const lp = candles[p].l;
+  const lk = candles[k].l;
+  Object.assign(out, { rsiP: rp, rsiK: rk });
+  const gap = k - p;
+
+  const type = lk < lp && rk > rp ? 'regular' : lk > lp && rk < rp ? 'hidden' : null;
+  out.type = type;
+  if (!type) {
+    reasons.push(lk === lp
+      ? 'دو کف هم‌قیمت‌اند؛ واگرایی تعریف نمی‌شود.'
+      : `قیمت و RSI هم‌جهت‌اند (قیمت ${lk < lp ? 'پایین‌تر' : 'بالاتر'}، RSI هم ${rk < rp ? 'پایین‌تر' : 'بالاتر'})؛ واگرایی نیست.`);
+    return out;
+  }
+
+  const maxS = pivotStrengthAt(candles, p);
+  const deltaPath = 'strategy.divergence.minRsiDelta';
+  const delta = Math.abs(rk - rp);
+  // شرطِ بات اکید است (rk > rp + minRsiDelta)، پس بزرگ‌ترین گامی که کمتر از اختلاف است
+  const maxDelta = Number((Math.ceil(delta / stepOf(deltaPath) - 1e-9) * stepOf(deltaPath) - stepOf(deltaPath)).toFixed(4));
+  const lim = (path) => paramByPath(path);
+  const want = {
+    pivotStrength: Math.min(D.pivotStrength, maxS),
+    minGap: Math.min(D.minGap, gap),
+    lookback: Math.max(D.lookback, ceilTo(gap, 'strategy.divergence.lookback')),
+    minRsiDelta: Math.min(D.minRsiDelta, maxDelta),
+    allowHidden: D.allowHidden || type === 'hidden',
+  };
+
+  if (maxS < lim('strategy.divergence.pivotStrength').min) reasons.push('کفِ اول کفِ چرخشی نیست (کندلِ پایین‌ترِ کناری دارد).');
+  if (gap < lim('strategy.divergence.minGap').min) reasons.push(`دو کف خیلی نزدیک‌اند (${gap} کندل).`);
+  if (want.lookback > lim('strategy.divergence.lookback').max) reasons.push(`کفِ اول خیلی قدیمی است (${gap} کندل قبل؛ بیشینه ${lim('strategy.divergence.lookback').max}).`);
+  if (maxDelta < lim(deltaPath).min) reasons.push(`اختلافِ RSI ِ دو کف فقط ${delta.toFixed(1)} است؛ واگراییِ معناداری نیست.`);
+
+  // ناحیه‌ی اشباع: شدیدترین RSI (روی قیمتِ قرینه برای فروش) باید زیرِ zone باشد
+  const zoneChange = {};
+  const extreme = Math.min(rp, rk);
+  if (Z?.enabled) {
+    const zone = short ? 100 - Z.high : Z.low;
+    if (extreme > zone) {
+      if (short) {
+        const to = floorTo(100 - extreme, 'strategy.rsiZone.high');
+        if (to < lim('strategy.rsiZone.high').min) reasons.push(`RSI به ناحیه‌ی اشباعِ خرید نرسیده (بیشینه ${(100 - extreme).toFixed(1)}).`);
+        else zoneChange['strategy.rsiZone.high'] = to;
+      } else {
+        const to = ceilTo(extreme, 'strategy.rsiZone.low');
+        if (to > lim('strategy.rsiZone.low').max) reasons.push(`RSI به ناحیه‌ی اشباعِ فروش نرسیده (کمینه ${extreme.toFixed(1)}).`);
+        else zoneChange['strategy.rsiZone.low'] = to;
+      }
+    }
+  }
+
+  // همان شرطِ «دو کفِ متوالی» ِ findDivergence — تنظیمی درستش نمی‌کند
+  const floorL = Math.min(lp, lk);
+  const floorR = extreme - 1;
+  for (let i = p + 1; i < k; i++) {
+    if (candles[i].l < floorL) { reasons.push('بینِ دو کف قیمت پایین‌تر از هر دو رفته؛ این دو، کف‌های متوالی نیستند.'); break; }
+    if (r[i] < floorR) { reasons.push('بینِ دو کف RSI پایین‌تر از هر دو رفته؛ این دو، کف‌های متوالی نیستند.'); break; }
+  }
+  if (reasons.length) return out;
+
+  const zoneFor = () => {
+    if (!Z?.enabled) return null;
+    const high = zoneChange['strategy.rsiZone.high'] ?? Z.high;
+    const low = zoneChange['strategy.rsiZone.low'] ?? Z.low;
+    return short ? 100 - high : low;
+  };
+  const tryWith = (over) => findDivergence(candles, r, k, { ...D, ...over, zone: zoneFor() });
+  const dist = (over) => Object.keys(over).reduce((t, key) => {
+    const q = lim(`strategy.divergence.${key}`);
+    if (q.type === 'bool') return t + (over[key] !== D[key] ? 1 : 0);
+    return t + Math.abs(over[key] - D[key]) / (q.max - q.min);
+  }, 0);
+
+  let best = null;
+  if (tryWith(want)?.p === p) best = { over: want };
+  else {
+    // کفِ قبلیِ نزدیک‌تری برنده شده: فاصله‌ی حداقل را از آن رد کن، یا اختلاف/قدرت را بالا ببر
+    // فاصله‌هایی که دقیقاً از یک کفِ رقیب رد می‌شوند
+    const gaps = [...new Set([want.minGap, ...pivotLows(candles, lim('strategy.divergence.pivotStrength').min)
+      .filter((x) => x > p && x < k).map((x) => k - x + 1)])].filter((g) => g >= want.minGap && g <= gap);
+    const deltas = [];
+    for (let v = want.minRsiDelta; v <= maxDelta + 1e-9; v += stepOf(deltaPath)) deltas.push(Number(v.toFixed(4)));
+    for (let s = want.pivotStrength; s <= Math.min(maxS, lim('strategy.divergence.pivotStrength').max); s++) {
+      for (const de of deltas) {
+        for (const g of gaps) {
+          const over = { ...want, pivotStrength: s, minRsiDelta: de, minGap: g };
+          const d = dist(over);
+          if (best && d >= best.d) continue;
+          if (tryWith(over)?.p === p) best = { over, d };
+        }
+      }
+    }
+  }
+  if (!best) {
+    reasons.push('با هر تنظیمی کفِ قبلیِ دیگری زودتر انتخاب می‌شود.');
+    return out;
+  }
+  out.ok = true;
+  for (const [key, v] of Object.entries(best.over)) {
+    if (v !== D[key]) out.changes.push({ path: `strategy.divergence.${key}`, from: D[key], to: v });
+  }
+  for (const [path, v] of Object.entries(zoneChange)) {
+    out.changes.push({ path, from: Z[path.split('.').at(-1)], to: v });
   }
   return out;
 }

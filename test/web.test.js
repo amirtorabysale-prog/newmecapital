@@ -2,9 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { verifyInitData, webAppUrl } from '../src/web/server.js';
-import { fitLine, snapLow } from '../src/strategy/fit.js';
+import { fitLine, fitDivergence, snapLow } from '../src/strategy/fit.js';
+import { findDivergence } from '../src/strategy/divergence.js';
+import { atr, rsi } from '../src/strategy/indicators.js';
 import { findTrendline, lineAt } from '../src/strategy/trendline.js';
-import { atr } from '../src/strategy/indicators.js';
 import { PARAMS } from '../src/strategy/params.js';
 
 const TOKEN = '123:abcdefghijklmnopqrstuvwxyz0123456789';
@@ -95,5 +96,80 @@ test('خطِ استاد: کفِ دومِ پایین‌تر ← توضیح، نه
   for (const f of [fitLine(c, strategy, a, b), fitLine(c, strategy, b, a)]) {
     assert.equal(f.ok, false);
     assert.match(f.reasons[0], /پایین‌تر/);
+  }
+});
+
+const divStrategy = {
+  ...strategy,
+  rsiPeriod: 14,
+  rsiZone: { enabled: true, low: 30, high: 80 },
+  divergence: { pivotStrength: 3, lookback: 60, minGap: 8, minRsiDelta: 3, allowHidden: true },
+};
+
+test('واگراییِ استاد: بدونِ خط یا کفِ دومِ دور از برخورد ← توضیح', () => {
+  const c = series();
+  const [a, b, k] = c.pivots;
+  let f = fitDivergence(c, divStrategy, a, b, null);
+  assert.equal(f.ok, false);
+  assert.match(f.reasons[0], /خطِ روندی/);
+  f = fitDivergence(c, divStrategy, a, b, k);
+  assert.equal(f.ok, false);
+  assert.match(f.reasons[0], /برخورد/);
+});
+
+// کندل‌های مصنوعی با واگراییِ معمولی: ریزشِ تند تا 80 (RSI خیلی پایین)، واکنش،
+// بعد ریزشِ آرام تا کفِ پایین‌ترِ 78 با RSI ِ بالاتر
+function divSeries() {
+  const out = [];
+  let t = 0;
+  let c = 100;
+  const step = (to) => {
+    const o = c;
+    c = to;
+    out.push({ t: t++ * 3600_000, o, h: Math.max(o, c) + 0.3, l: Math.min(o, c) - 0.3, c, v: 1 });
+  };
+  for (let i = 0; i < 30; i++) step(100 + (i % 2 ? 0.5 : -0.5));
+  for (let i = 1; i <= 8; i++) step(100 - i * 2.5);
+  out.p = out.length - 1;
+  for (let i = 1; i <= 10; i++) step(80 + i);
+  for (let i = 1; i <= 15; i++) step(90 - i * 0.8);
+  out.k = out.length - 1;
+  for (let i = 1; i <= 4; i++) step(78 + i * 0.5);
+  return out;
+}
+
+test('واگراییِ استاد: واگرایی‌ای که بات رد می‌کند ← تنظیمِ لازم، و بعدش بات همان را می‌بیند', () => {
+  const c = divSeries();
+  const r = rsi(c.map((x) => x.c), 14);
+  const strict = { ...divStrategy, divergence: { ...divStrategy.divergence, minRsiDelta: 19, lookback: 20 } };
+  assert.equal(findDivergence(c, r, c.k, { ...strict.divergence, zone: 30 }), null);
+  const f = fitDivergence(c, strict, c.p, c.k, c.k);
+  assert.ok(f.ok, f.reasons.join(' | '));
+  assert.equal(f.type, 'regular');
+  const d = { ...strict.divergence };
+  for (const x of f.changes) d[x.path.split('.').at(-1)] = x.to;
+  assert.equal(findDivergence(c, r, c.k, { ...d, zone: 30 })?.p, c.p);
+  // RSI ِ کفِ اول 17 است؛ با اشباعِ 10 تنظیم پیشنهاد می‌شود که اشباع را بالا ببرد
+  const z = fitDivergence(c, { ...divStrategy, rsiZone: { enabled: true, low: 10, high: 80 } }, c.p, c.k, c.k);
+  assert.ok(z.changes.some((x) => x.path === 'strategy.rsiZone.low' && x.to === 20), JSON.stringify(z.changes));
+});
+
+test('واگراییِ استاد: هر پیشنهاد را اعمال کنی، بات همان کفِ قبلی را برمی‌دارد', () => {
+  for (const c of [divSeries(), series()]) {
+    const k = c.k ?? c.pivots[2];
+    const r = rsi(c.map((x) => x.c), 14);
+    for (let p = 0; p < k - 2; p++) {
+      const f = fitDivergence(c, divStrategy, p, k, k);
+      if (!f.ok) { assert.ok(f.reasons.length, `p=${p}`); continue; }
+      const s = structuredClone(divStrategy);
+      for (const x of f.changes) {
+        const [, group, key] = x.path.split('.');
+        s[group][key] = x.to;
+        const q = PARAMS.find((y) => y.path === x.path);
+        if (q.type !== 'bool') assert.ok(x.to >= q.min && x.to <= q.max, x.path);
+      }
+      const zone = s.rsiZone.enabled ? s.rsiZone.low : null;
+      assert.equal(findDivergence(c, r, k, { ...s.divergence, zone })?.p, p, `p=${p}`);
+    }
   }
 });

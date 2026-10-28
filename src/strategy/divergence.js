@@ -19,7 +19,7 @@
 
 import { pivotLows } from './indicators.js';
 
-function rsiNear(r, i, last) {
+export function rsiNear(r, i, last) {
   let m = Infinity;
   for (let j = Math.max(0, i - 1); j <= Math.min(last, i + 1); j++) if (Number.isFinite(r[j])) m = Math.min(m, r[j]);
   return m;
