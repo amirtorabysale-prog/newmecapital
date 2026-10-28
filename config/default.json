@@ -19,6 +19,7 @@
   "directions": ["long"],
   "cooldownHours": 12,
   "alertTtlHours": 3,
+  "publishMaxDriftAtr": 0.5,
   "nearAlerts": true,
   "maxHoldHours": 120,
 
@@ -30,6 +31,7 @@
       "trendline":   { "enabled": true,  "weight": 30, "required": true },
       "fib":         { "enabled": true,  "weight": 25, "required": false },
       "divergence":  { "enabled": true,  "weight": 25, "required": false },
+      "divergence5m": { "enabled": true, "weight": 15, "required": false },
       "candle":      { "enabled": true,  "weight": 20, "required": false },
       "trendFilter": { "enabled": false, "weight": 15, "required": true },
       "volume":      { "enabled": false, "weight": 10, "required": false }
@@ -53,10 +55,24 @@
       "nearToleranceAtr": 1.2
     },
 
+    "rsiZone": {
+      "enabled": true,
+      "low": 30,
+      "high": 80
+    },
+
     "divergence": {
       "pivotStrength": 3,
       "lookback": 60,
       "minGap": 8,
+      "minRsiDelta": 3.0,
+      "allowHidden": true
+    },
+
+    "divergence5m": {
+      "pivotStrength": 3,
+      "lookback": 72,
+      "minGap": 6,
       "minRsiDelta": 3.0,
       "allowHidden": true
     },

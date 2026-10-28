@@ -25,7 +25,8 @@ export const CONDITIONS = {
     fa: 'واگرایی RSI',
     en: 'RSI Div',
     about: 'بینِ کفِ فعلی و یک کفِ قبلی. معمولی: قیمت پایین‌تر، RSI بالاتر. '
-      + 'مخفی: قیمت بالاتر، RSI پایین‌تر (ادامه‌ی روند).',
+      + 'مخفی: قیمت بالاتر، RSI پایین‌تر (ادامه‌ی روند). '
+      + 'شدیدترین نقطه‌ی RSI باید از ناحیه‌ی اشباع رد شده باشد: کف زیرِ 30، سقف بالای 80.',
   },
   candle: {
     fa: 'کندلِ برگشتی',
@@ -43,6 +44,13 @@ export const CONDITIONS = {
     fa: 'تأییدِ حجم',
     en: 'Volume',
     about: 'حجمِ کندلِ برگشتی (یا کفِ برخورد) از میانگینِ حجمِ کندل‌های قبلی بیشتر باشد.',
+  },
+  divergence5m: {
+    fa: 'واگرایی RSI 5 دقیقه',
+    en: 'RSI Div 5m',
+    about: 'همان واگراییِ RSI، ولی روی کندلِ 5 دقیقه: پایین‌ترین کفِ 5 دقیقه از شروعِ کندلِ برخورد با خط، '
+      + 'در برابرِ یک کفِ 5 دقیقه‌ایِ قبلی. فقط وقتی قیمت روی خط است بررسی می‌شود. '
+      + 'اگر صرافی داده‌ی 5 دقیقه نداد، این شرط (در حالتِ اختیاری) از امتیاز کنار می‌رود.',
   },
 };
 
@@ -68,6 +76,17 @@ export const PARAMS = [
   { id: 22, group: 'divergence', path: 'strategy.divergence.minGap', fa: 'حداقلِ فاصله‌ی دو کف', unit: 'کندل', step: 1, min: 3, max: 40 },
   { id: 23, group: 'divergence', path: 'strategy.divergence.minRsiDelta', fa: 'حداقلِ اختلافِ RSI', unit: 'واحد', step: 0.5, min: 0.5, max: 20 },
   { id: 24, group: 'divergence', path: 'strategy.divergence.allowHidden', fa: 'واگراییِ مخفی هم قبول', type: 'bool' },
+  // ناحیه‌ی اشباع — برای واگراییِ یک‌ساعته و ۵ دقیقه، هر دو
+  { id: 70, group: 'divergence', path: 'strategy.rsiZone.enabled', fa: 'شرطِ اشباعِ RSI', type: 'bool', about: 'واگرایی فقط وقتی حساب است که RSI در شدیدترین نقطه‌اش از ناحیه‌ی اشباع رد شده باشد. برای واگراییِ 5 دقیقه هم اعمال می‌شود.' },
+  { id: 71, group: 'divergence', path: 'strategy.rsiZone.low', fa: 'اشباعِ فروش (کف)', unit: 'RSI', step: 5, min: 5, max: 50, about: 'در واگرایی کف (خرید)، RSI باید زیرِ این عدد رفته باشد.' },
+  { id: 72, group: 'divergence', path: 'strategy.rsiZone.high', fa: 'اشباعِ خرید (سقف)', unit: 'RSI', step: 5, min: 50, max: 95, about: 'در واگرایی سقف (فروش)، RSI باید بالای این عدد رفته باشد.' },
+
+  // واگراییِ 5 دقیقه — دوره‌ی RSI همان دوره‌ی بالاست
+  { id: 25, group: 'divergence5m', path: 'strategy.divergence5m.pivotStrength', fa: 'قدرتِ کف', unit: 'کندل هر طرف', step: 1, min: 2, max: 10 },
+  { id: 26, group: 'divergence5m', path: 'strategy.divergence5m.lookback', fa: 'بازه‌ی جست‌وجو', unit: 'کندلِ 5 دقیقه', step: 12, min: 24, max: 240 },
+  { id: 27, group: 'divergence5m', path: 'strategy.divergence5m.minGap', fa: 'حداقلِ فاصله‌ی دو کف', unit: 'کندلِ 5 دقیقه', step: 1, min: 3, max: 60 },
+  { id: 28, group: 'divergence5m', path: 'strategy.divergence5m.minRsiDelta', fa: 'حداقلِ اختلافِ RSI', unit: 'واحد', step: 0.5, min: 0.5, max: 20 },
+  { id: 29, group: 'divergence5m', path: 'strategy.divergence5m.allowHidden', fa: 'واگراییِ مخفی هم قبول', type: 'bool' },
 
   // کندل
   { id: 30, group: 'candle', path: 'strategy.candles.window', fa: 'کندل‌های بررسی‌شده', unit: 'کندلِ آخر', step: 1, min: 1, max: 5 },
@@ -90,9 +109,11 @@ export const PARAMS = [
   { id: 63, group: 'general', path: 'maxHoldHours', fa: 'حداکثر عمرِ پیگیریِ سیگنال', unit: 'ساعت', step: 12, min: 12, max: 336, about: 'سیگنالی که تا این زمان نه تارگتِ آخر و نه حد ضرر خورد، با قیمتِ همان لحظه بسته و در کارنامه ثبت می‌شود.' },
   { id: 64, group: 'general', path: 'nearAlerts', fa: 'هشدارِ نزدیک شدن به خط', type: 'bool', about: 'وقتی قیمتِ یک ارز به خط روند نزدیک می‌شود، پیش از ستاپ یک پیامِ کوتاه برای ادمین‌ها می‌آید.' },
   { id: 62, group: 'general', path: 'alertTtlHours', fa: 'اعتبارِ دکمه‌ی انتشار', unit: 'ساعت', step: 1, min: 1, max: 24 },
+  { id: 65, group: 'general', path: 'publishMaxDriftAtr', fa: 'حداکثر فاصله‌ی قیمت از ورود هنگامِ انتشار', unit: 'ATR', step: 0.25, min: 0.25, max: 3, about: 'لحظه‌ی زدنِ «انتشار» قیمتِ فعلی گرفته می‌شود. اگر از ورودِ پلن بیش از این فاصله گرفته باشد، انتشار متوقف می‌شود تا ورود را ویرایش کنی.' },
 ];
 
-// وزن و روشن/خاموش/الزامیِ هر شرط هم پارامترند، با idِ ساخته‌شده
+// وزن و روشن/خاموش/الزامیِ هر شرط هم پارامترند، با idِ ساخته‌شده از ترتیبِ CONDITIONS.
+// ⚠️ شرطِ تازه فقط ته اضافه شود؛ وگرنه idِ دکمه‌های شرط‌های قبلی جابه‌جا می‌شود.
 const CKEYS = Object.keys(CONDITIONS);
 CKEYS.forEach((key, i) => {
   PARAMS.push(

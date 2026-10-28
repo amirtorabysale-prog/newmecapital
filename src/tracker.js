@@ -11,6 +11,31 @@
  */
 
 export const TRACK_TF = '5m';
+const M5 = 300_000;
+const H1 = 3_600_000;
+/** بیشترین کندلِ ۵ دقیقه که صرافی‌ها در یک درخواست می‌دهند (~۸۳ ساعت) */
+export const MAX_5M = 1000;
+
+/**
+ * بعد از خاموشیِ طولانی‌تر از ۱۰۰۰ کندلِ ۵ دقیقه، اولِ فاصله از دست می‌رفت و
+ * حد ضرر یا تارگتی که آن‌جا خورده بود هیچ‌وقت ثبت نمی‌شد. حالا ابتدای فاصله
+ * با کندلِ یک‌ساعته پر می‌شود و از اولین ساعتِ کاملِ پوششِ ۵ دقیقه به بعد
+ * همان ۵ دقیقه — بدونِ هم‌پوشانی، تا یک بازه دو بار شمرده نشود.
+ *
+ * کندلِ ساعتی‌ای که `lastT` وسطش است هم می‌آید (با زمانِ `lastT`، تا step
+ * ردش نکند): بخشِ خوانده‌شده‌اش دوباره دیده می‌شود، که در بدترین حالت یک
+ * سربه‌سرِ زودتر از واقع است — بهتر از جا انداختنِ یک حد ضرر.
+ */
+export function catchUp(hourly, recent, lastT) {
+  const cut = recent.length ? Math.ceil(recent[0].t / H1) * H1 : Infinity;
+  return [
+    ...hourly.filter((k) => k.t + H1 > lastT && k.t < cut).map((k) => ({ ...k, t: Math.max(k.t, lastT) })),
+    ...recent.filter((k) => k.t >= cut),
+  ];
+}
+
+/** آیا فاصله از آخرین کندلِ خوانده‌شده بیش از یک درخواستِ ۵ دقیقه است؟ */
+export const needsCatchUp = (sig, now) => now - sig.lastT > (MAX_5M - 10) * M5;
 
 /** سیگنالِ تازه از پلنِ نهایی (بعد از ویرایشِ ادمین) */
 export function newSignal({ id, item, data, direction, plan, publishedAt, channelMsgId, maxHoldHours }) {

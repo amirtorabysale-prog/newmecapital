@@ -7,7 +7,7 @@ import { closedOnly } from '../src/exchanges/index.js';
 import { parseSymbol } from '../src/config.js';
 import { buildChartSvg } from '../src/chart/render.js';
 import { adminAlert, channelAnalysis, channelSignal } from '../src/messages.js';
-import { longSetup, candlesFrom, path } from './fixtures.js';
+import { longSetup, candlesFrom, path, ltfDivergence } from './fixtures.js';
 import cfgJson from '../config/default.json' with { type: 'json' };
 
 const cfg = structuredClone(cfgJson);
@@ -21,6 +21,67 @@ test('ستاپِ کامل: هر چهار شرط و امتیازِ ۱۰۰', () =>
   assert.equal(r.line.touches.length, 2);
   assert.equal(r.div.type, 'hidden');
   assert.equal(r.candle.key, 'engulfing');
+});
+
+test('واگراییِ 5 دقیقه: کفِ پایین‌تر با RSI بالاتر بعد از شروعِ کندلِ برخورد', () => {
+  const c = longSetup();
+  const touchT = c[analyze(c, cfg, 'long').line.touchIdx].t;
+  const r = analyze(c, cfg, 'long', ltfDivergence(touchT));
+  assert.equal(r.div5m?.type, 'regular');
+  assert.ok(r.div5m.tK >= touchT && r.div5m.tP < touchT, 'کفِ دوم باید روی برخورد باشد، کفِ اول پیش از آن');
+  assert.equal(r.components.divergence5m.ok, true);
+  assert.equal(r.score, 100);
+  assert.match(adminAlert({ item: { id: 'TESTUSDT' }, data: { candles: c, pretty: 'TEST/USDT', exchange: 'LBank' }, result: r }, cfg), /RSI 5 دقیقه/);
+
+  // همان کندل‌ها ولی همه پیش از برخورد ← واگرایی روی برخورد نیست
+  const early = ltfDivergence(touchT).map((k) => ({ ...k, t: k.t - 6 * 3_600_000 }));
+  const r2 = analyze(c, cfg, 'long', early);
+  assert.equal(r2.div5m, null);
+  assert.equal(r2.components.divergence5m.points, 0);
+  assert.ok(r2.score < 100);
+});
+
+test('واگراییِ 5 دقیقه بی‌داده: اختیاری ← از امتیاز بیرون، الزامی ← ستاپ بسته', () => {
+  const r = analyze(longSetup(), cfg, 'long', null);
+  assert.equal(r.components.divergence5m.unavailable, true);
+  assert.equal(r.score, 100, 'نبودِ داده نباید امتیاز را کم کند');
+  assert.deepEqual(r.blocked, []);
+
+  const strict = structuredClone(cfg);
+  strict.strategy.conditions.divergence5m.required = true;
+  const s = analyze(longSetup(), strict, 'long', null);
+  assert.deepEqual(s.blocked, ['divergence5m']);
+  assert.equal(s.alertable, false);
+});
+
+test('واگراییِ 5 دقیقه در فروش قرینه‌ی خرید است', () => {
+  const c = longSetup();
+  const ltf = ltfDivergence(c[analyze(c, cfg, 'long').line.touchIdx].t);
+  const L = analyze(c, cfg, 'long', ltf);
+  const S = analyze(mirrorCandles(c), cfg, 'short', mirrorCandles(ltf));
+  assert.equal(S.div5m.type, L.div5m.type);
+  assert.ok(Math.abs(S.div5m.rsiK - (100 - L.div5m.rsiK)) < 1e-9);
+  assert.ok(Math.abs(S.div5m.priceK + L.div5m.priceK) < 1e-9);
+});
+
+test('ناحیه‌ی اشباعِ RSI: کف باید زیرِ low و سقف بالای high رفته باشد', () => {
+  const c = longSetup();
+  const ltf = ltfDivergence(c[analyze(c, cfg, 'long').line.touchIdx].t);
+  const withZone = (low, high, enabled = true) => {
+    const x = structuredClone(cfg);
+    x.strategy.rsiZone = { enabled, low, high };
+    return x;
+  };
+  // کفِ اولِ داده‌ی ۵ دقیقه RSI ِ حدودِ 15.7 دارد
+  assert.ok(analyze(c, withZone(30, 80), 'long', ltf).div5m, 'زیرِ 30 است و باید قبول شود');
+  assert.equal(analyze(c, withZone(10, 80), 'long', ltf).div5m, null, 'به 10 نرسیده و باید رد شود');
+  assert.ok(analyze(c, withZone(10, 80, false), 'long', ltf).div5m, 'شرطِ خاموش نباید رد کند');
+
+  // فروش: RSI ِ سقف 100 − 15.7 = 84.3 ← بالای 80 قبول، بالای 85 نه
+  const mc = mirrorCandles(c);
+  const ml = mirrorCandles(ltf);
+  assert.ok(analyze(mc, withZone(30, 80), 'short', ml).div5m, 'سقفِ 84 از 80 گذشته');
+  assert.equal(analyze(mc, withZone(30, 85), 'short', ml).div5m, null, 'سقفِ 84 به 85 نرسیده');
 });
 
 test('پلن: حد ضرر زیرِ خط، تارگت‌ها بالای ورود و به ترتیب', () => {

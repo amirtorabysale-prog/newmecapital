@@ -113,3 +113,30 @@ test('غیرِ ادمین نمی‌تواند تأیید کند', async () => {
   assert.equal(api.calls.length, 0);
   assert.equal(cfg.watchlist.length, 1);
 });
+
+test('هشدارِ «در حالِ انتشار»: پیامِ درست به ادمینِ دوم، و باز شدن بعد از ری‌استارت', async () => {
+  const { store } = await import('../src/store.js');
+  const { api, bot, cfg } = setup();
+  cfg.cooldownHours = 0;
+  await bot.runScan();
+  const id = api.calls.find((c) => c.name === 'sendPhoto').args[3].buttons[0][0].callback_data.slice(3);
+  store.updateAlert(id, { status: 'publishing' });
+
+  api.calls.length = 0;
+  await bot.decide({ id: 'cb', from: { id: 111 } }, true, id);
+  assert.match(api.calls[0].args[1], /در حالِ انتشار/);
+  assert.doesNotMatch(api.calls[0].args[1], /رد شده/);
+
+  // ری‌استارت: یک بات تازه روی همان state
+  const again = setup();
+  Object.assign(again.api, {
+    getMe: async () => ({ id: 1, username: 'b' }),
+    deleteWebhook: async () => true,
+    setCommands: async () => true,
+    getUpdates: () => new Promise(() => {}),
+  });
+  again.bot.start();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(store.alert(id).status, 'pending');
+  assert.ok(again.api.calls.some((c) => c.name === 'sendMessage' && /نیمه‌کاره/.test(c.args[1])), 'مالک خبر نگرفت');
+});

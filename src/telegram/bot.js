@@ -17,8 +17,8 @@ import { randomBytes } from 'node:crypto';
 import { SCAN_INTERVALS, TIMEFRAMES, parseSymbol, saveSettings, setParam, resetParams } from '../config.js';
 import { scanOne, setupKey } from '../scanner.js';
 import { fetchFrom } from '../exchanges/index.js';
-import { TRACK_TF, newSignal, step } from '../tracker.js';
-import { applyEdits, validatePlan, hasEdits } from '../planEdit.js';
+import { TRACK_TF, MAX_5M, catchUp, needsCatchUp, newSignal, step } from '../tracker.js';
+import { applyEdits, validatePlan, hasEdits, checkLivePrice } from '../planEdit.js';
 import { renderChart } from '../chart/render.js';
 import { store, dataDir } from '../store.js';
 import { PARAMS, paramById, getPath, coerce } from '../strategy/params.js';
@@ -28,6 +28,12 @@ import { utc } from '../format.js';
 import { normalizeChannel, checkChannel } from '../channel.js';
 
 const CAPTION_MAX = 1024;
+
+const STATUS_FA = {
+  published: 'قبلاً منتشر شده.',
+  rejected: 'قبلاً رد شده.',
+  publishing: 'در حالِ انتشار است — ادمینِ دیگری همین الان زد.',
+};
 
 export function createBot({ api, env, cfg, log = console }) {
   // مالک‌ها از ADMIN_IDS ِ ریل‌وی می‌آیند و از پنل حذف‌شدنی نیستند — وگرنه یک
@@ -224,7 +230,7 @@ export function createBot({ api, env, cfg, log = console }) {
   async function decide(cb, approve, alertId) {
     const a = store.alert(alertId);
     if (!a) return api.answer(cb.id, 'این هشدار پیدا نشد (شاید سرور ری‌استارت شده).', true);
-    if (a.status !== 'pending') return api.answer(cb.id, `قبلاً ${a.status === 'published' ? 'منتشر' : 'رد'} شده.`, true);
+    if (a.status !== 'pending') return api.answer(cb.id, STATUS_FA[a.status] || 'این هشدار دیگر باز نیست.', true);
 
     const who = cb.from.username ? `@${cb.from.username}` : cb.from.first_name;
     if (!approve) {
@@ -243,8 +249,24 @@ export function createBot({ api, env, cfg, log = console }) {
     const final = finalRow(a);
     if (final.error) return api.answer(cb.id, final.error, true);
 
+    // قیمتِ همین لحظه، از همان صرافی: پلن با قیمتِ لحظه‌ی اسکن ساخته شده
+    const row0 = final.row;
+    if (row0?.result.plan && row0.data.exchangeKey) {
+      let live;
+      try {
+        live = (await fetchFrom(row0.data.exchangeKey, row0.data.symbol, TRACK_TF, 3)).at(-1)?.c;
+      } catch (e) {
+        log.warn('[publish] قیمتِ فعلی:', e.message);
+      }
+      if (!Number.isFinite(live)) return api.answer(cb.id, 'قیمتِ فعلی از صرافی نیامد. چند دقیقه بعد دوباره بزن.', true);
+      const err = checkLivePrice(row0.result.plan, row0.result.direction, live, row0.result.atr, cfg.publishMaxDriftAtr ?? 0.5);
+      if (err) return api.answer(cb.id, err, true);
+      // در فاصله‌ی گرفتنِ قیمت شاید ادمینِ دیگری زده باشد
+      if (store.alert(alertId).status !== 'pending') return api.answer(cb.id, STATUS_FA[store.alert(alertId).status], true);
+    }
+
     // قفل پیش از تماسِ شبکه: دو ادمین که هم‌زمان بزنند نباید دو پست بسازند
-    store.updateAlert(alertId, { status: 'publishing' });
+    store.updateAlert(alertId, { status: 'publishing', publishingAt: Date.now() });
     await api.answer(cb.id, 'در حالِ انتشار…');
     try {
       const { row, png } = final;
@@ -414,10 +436,17 @@ export function createBot({ api, env, cfg, log = console }) {
     tracking = true;
     try {
       for (const sig of store.signals().filter((x) => x.status === 'open')) {
-        const need = Math.min(1000, Math.ceil((now - sig.lastT) / 300_000) + 2);
         let candles;
         try {
-          candles = await fetchFrom(sig.exchangeKey, sig.exSymbol, TRACK_TF, need);
+          if (needsCatchUp(sig, now)) {
+            const hours = Math.min(1000, Math.ceil((now - sig.lastT) / 3_600_000) + 2);
+            const hourly = await fetchFrom(sig.exchangeKey, sig.exSymbol, '1h', hours);
+            const recent = await fetchFrom(sig.exchangeKey, sig.exSymbol, TRACK_TF, MAX_5M);
+            candles = catchUp(hourly, recent, sig.lastT);
+          } else {
+            const need = Math.ceil((now - sig.lastT) / 300_000) + 2;
+            candles = await fetchFrom(sig.exchangeKey, sig.exSymbol, TRACK_TF, need);
+          }
         } catch (e) {
           log.warn(`[track] ${sig.pretty}: ${e.message}`);
           continue;
@@ -586,7 +615,8 @@ export function createBot({ api, env, cfg, log = console }) {
       }
 
       case 'rg':
-        resetParams(cfg, `strategy.conditions.${a1}`);
+        // نقطه‌ی ته لازم است: بدونش «divergence» شرطِ «divergence5m» را هم برمی‌گرداند
+        resetParams(cfg, `strategy.conditions.${a1}.`);
         for (const p of PARAMS.filter((x) => x.group === a1)) resetParams(cfg, p.path);
         await api.answer(cb.id, 'به پیش‌فرض برگشت');
         return show(chat, msgId, UI.condition(s(), a1));
@@ -858,6 +888,23 @@ export function createBot({ api, env, cfg, log = console }) {
     }
   }
 
+  /**
+   * هشداری که وسطِ انتشار ماند (ری‌استارت یا دیپلوی) قفل می‌ماند و دیگر هیچ
+   * دکمه‌ای کار نمی‌کرد. باز می‌شود — ولی شاید پستش در کانال رفته باشد، پس
+   * مالک‌ها خبر می‌گیرند که پیش از انتشارِ دوباره کانال را نگاه کنند.
+   */
+  async function recoverStuck() {
+    for (const a of Object.values(store.get().alerts)) {
+      if (a.status !== 'publishing') continue;
+      store.updateAlert(a.id, { status: 'pending', interrupted: true });
+      for (const o of owners) {
+        api.sendMessage(o, `⚠️ انتشارِ <b>${M.esc(a.pretty || a.symbol)}</b> نیمه‌کاره ماند (ری‌استارتِ سرور).
+`
+          + 'پیش از زدنِ دوباره‌ی «انتشار» کانال را نگاه کن؛ شاید پستِ تحلیل رفته باشد.').catch(() => {});
+      }
+    }
+  }
+
   async function start() {
     const me = await api.getMe();
     botId = me.id;
@@ -875,6 +922,7 @@ export function createBot({ api, env, cfg, log = console }) {
       { command: 'scan', description: 'اسکنِ فوری (یا /scan SOL برای یک ارز)' },
       { command: 'id', description: 'شناسه‌ی عددی' },
     ]).catch(() => {});
+    await recoverStuck();
     schedule();
     // پیگیری هر ۱۰ دقیقه — کندلِ ۵ دقیقه‌ای، پس دیرتر از ۱۵ دقیقه خبری نمی‌ماند
     trackTimer = setInterval(() => runTracker().catch((e) => log.error('[track]', e)), 10 * 60_000);

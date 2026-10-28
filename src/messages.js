@@ -25,6 +25,9 @@ export function evidenceLines(res, candles, cfg) {
   const up = res.direction !== 'short';
   const out = [];
   const tag = (key) => `${c[key].required ? ' (الزامی)' : ''}`;
+  const Z = cfg.strategy.rsiZone;
+  // واگرایی‌ای که RSI اش به اشباع نرسیده هم «پیدا نشد» است — دلیلش گفته شود
+  const zoneFa = Z?.enabled ? ` (با RSI ${up ? `زیرِ ${Z.low}` : `بالای ${Z.high}`})` : '';
 
   if (c.trendline.enabled) {
     const where = L.state === 'touch' ? 'قیمت روی خط است'
@@ -43,7 +46,16 @@ export function evidenceLines(res, candles, cfg) {
     out.push(res.div
       ? `${mark(c.divergence)} واگراییِ ${res.div.type === 'hidden' ? 'مخفیِ' : 'معمولیِ'} ${up ? 'مثبت' : 'منفی'} RSI:`
         + ` ${res.div.rsiP.toFixed(1)} ← ${res.div.rsiK.toFixed(1)} (قیمت ${P(res.div.priceP)} ← ${P(res.div.priceK)})${tag('divergence')}`
-      : `❌ واگرایی RSI: بینِ کفِ فعلی و کف‌های قبلی پیدا نشد${tag('divergence')}`);
+      : `❌ واگرایی RSI${zoneFa}: بینِ کفِ فعلی و کف‌های قبلی پیدا نشد${tag('divergence')}`);
+  }
+  const c5 = c.divergence5m;
+  if (c5 && (c5.enabled || c5.unavailable)) {
+    const d = res.div5m;
+    const hm = (t) => utc(t).slice(11);
+    out.push(c5.unavailable ? `⚪️ واگرایی RSI 5 دقیقه: داده‌ی 5 دقیقه نیامد${c5.enabled ? '' : ' — در امتیاز حساب نشد'}${tag('divergence5m')}`
+      : d ? `${mark(c5)} واگراییِ ${d.type === 'hidden' ? 'مخفیِ' : 'معمولیِ'} ${up ? 'مثبت' : 'منفی'} RSI 5 دقیقه:`
+        + ` ${d.rsiP.toFixed(1)} ← ${d.rsiK.toFixed(1)} (قیمت ${P(d.priceP)} ← ${P(d.priceK)} · ${hm(d.tP)} ← ${hm(d.tK)} UTC)${tag('divergence5m')}`
+        : `❌ واگرایی RSI 5 دقیقه${zoneFa}: ${L.state === 'touch' ? 'روی کفِ 5 دقیقه‌ایِ برخورد پیدا نشد' : 'فقط روی خط بررسی می‌شود'}${tag('divergence5m')}`);
   }
   if (c.candle.enabled) {
     out.push(res.candle
@@ -189,6 +201,9 @@ export function channelAnalysis({ data, result: res }, cfg, { note } = {}) {
       ? `RSI واگراییِ مخفیِ ${up ? 'مثبت' : 'منفی'} نشان می‌دهد: قیمت کفِ ${up ? 'بالاتر' : 'پایین‌تر'} ساخته ولی RSI ریست شده — نشانه‌ی ادامه‌ی روند.`
       : `RSI واگراییِ ${up ? 'مثبت' : 'منفی'} نشان می‌دهد: قیمت ${up ? 'کفِ پایین‌تر' : 'سقفِ بالاتر'} زده ولی قدرتِ ${up ? 'فروشنده' : 'خریدار'} کم شده.`);
   }
+  if (res.components.divergence5m?.enabled && res.div5m) {
+    parts.push(`در تایم‌فریمِ 5 دقیقه هم RSI واگراییِ ${res.div5m.type === 'hidden' ? 'مخفیِ ' : ''}${up ? 'مثبت' : 'منفی'} دارد — برگشت از خط در تایمِ پایین هم تأیید شده.`);
+  }
   if (res.components.candle.enabled && res.candle) parts.push(`روی همین ناحیه کندلِ برگشتیِ «${res.candle.fa}» بسته شده.`);
   if (res.components.trendFilter.enabled && res.components.trendFilter.ok) {
     parts.push(`قیمت ${up ? 'بالای' : 'زیرِ'} EMA ${res.trend.period} است؛ روندِ بزرگ‌تر هم‌جهت است.`);
@@ -248,7 +263,11 @@ export function strategyText(cfg) {
       lines.push(`   سطحِ ${s.fib.level} · کامل ≤ ${s.fib.toleranceAtr} ATR · نصف ≤ ${s.fib.nearToleranceAtr} ATR`);
     } else if (key === 'divergence') {
       lines.push(`   RSI ${s.rsiPeriod} · کفِ قبلی ${s.divergence.minGap} تا ${s.divergence.lookback} کندل قبل`
-        + ` · اختلاف ≥ ${s.divergence.minRsiDelta} · مخفی ${s.divergence.allowHidden ? 'قبول' : 'نه'}`);
+        + ` · اختلاف ≥ ${s.divergence.minRsiDelta} · مخفی ${s.divergence.allowHidden ? 'قبول' : 'نه'}${s.rsiZone?.enabled ? ` · اشباع: کف < ${s.rsiZone.low}، سقف > ${s.rsiZone.high}` : ''}`);
+    } else if (key === 'divergence5m') {
+      const d = s.divergence5m;
+      lines.push(`   کندلِ 5 دقیقه · RSI ${s.rsiPeriod} · کفِ قبلی ${d.minGap} تا ${d.lookback} کندل قبل`
+        + ` · اختلاف ≥ ${d.minRsiDelta} · مخفی ${d.allowHidden ? 'قبول' : 'نه'}${s.rsiZone?.enabled ? ` · اشباع: کف < ${s.rsiZone.low}، سقف > ${s.rsiZone.high}` : ''}`);
     } else if (key === 'candle') {
       lines.push(`   روی ${s.candles.window} کندلِ آخر · پوشا/ستاره ×1، چکش ×0.9، نفوذی ×0.85، انبرک ×0.75، هارامی/دوجی ×0.6`);
     } else if (key === 'trendFilter') {

@@ -36,7 +36,8 @@ globalThis.fetch = async (url) => {
     // کندل‌های ۵ دقیقه‌ایِ پیگیری: بعد از انتشار، قیمت تا globalThis.trackHigh بالا می‌رود
     if (u.includes('type=minute5')) {
       const t = Math.floor(Date.now() / 300_000) * 300_000;
-      const rows = [2, 1].map((n) => [(t - n * 300_000) / 1000, 112, globalThis.trackHigh ?? 112.5, 111.6, 112, 1]);
+      // کمی بالای ورودِ ستاپ (111.4) — انتشار قیمتِ فعلی را با ورود می‌سنجد
+      const rows = [2, 1].map((n) => [(t - n * 300_000) / 1000, 111.5, globalThis.trackHigh ?? 111.6, 111.45, 111.5, 1]);
       return json({ result: 'true', data: rows });
     }
     if (u.includes('symbol=test_usdt')) return json({ result: 'true', data: shifted(longSetup()).map((k) => [k.t / 1000, k.o, k.h, k.l, k.c, k.v]) });

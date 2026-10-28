@@ -3,14 +3,27 @@
  * و بهترین نتیجه را برگردان. تصمیمِ «هشدار بده یا نه» این‌جا نیست — در bot.
  */
 
-import { fetchCandles } from './exchanges/index.js';
+import { fetchCandles, fetchFrom } from './exchanges/index.js';
 import { analyze } from './strategy/analyze.js';
+
+/** کندل‌های 5 دقیقه برای واگراییِ 5 دقیقه — ۳۰۰ تا یعنی ۲۵ ساعت، بیش از بازه + گرم شدنِ RSI */
+export const LTF = '5m';
+const LTF_CANDLES = 300;
 
 export async function scanOne(item, cfg) {
   const data = await fetchCandles(item, cfg);
+  // از همان صرافی و همان نماد: قیمتِ کفِ 5 دقیقه باید با کفِ یک‌ساعته یکی باشد
+  let ltf = null;
+  if (cfg.strategy.conditions.divergence5m?.enabled) {
+    try {
+      ltf = await fetchFrom(data.exchangeKey, data.symbol, LTF, LTF_CANDLES);
+    } catch (e) {
+      data.ltfError = e.message;
+    }
+  }
   let best = null;
   for (const dir of cfg.directions) {
-    const res = analyze(data.candles, cfg, dir);
+    const res = analyze(data.candles, cfg, dir, ltf);
     if (res && (!best || res.score > best.score)) best = res;
   }
   return { item, data, result: best };

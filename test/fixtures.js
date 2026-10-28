@@ -39,3 +39,29 @@ export function longSetup() {
   c[n - 1] = { ...c[n - 1], o: 110.2, c: 111.4, h: 111.5, l: 110.0 };
   return c;
 }
+
+/**
+ * کندل‌های ۵ دقیقه با واگراییِ معمولیِ صعودی که کفِ دومش بعد از `touchT`
+ * (شروعِ کندلِ برخورد) است:
+ *
+ *   ۰–۴۰   درجا، کمی نزولی
+ *   ۴۰–۵۰  ریزشِ تند تا ~۱۱۰.۴         (کفِ اول — RSI خیلی پایین)
+ *   ۵۰–۶۰  برگشت
+ *   ۶۰–۸۵  نزولِ زیگزاگی تا کفِ پایین‌تر (RSI بالاتر)   ← از touchT به بعد
+ *   ۸۵–۹۱  برگشت
+ */
+export function ltfDivergence(touchT) {
+  const M5 = 300_000;
+  const closes = [];
+  let v = 113;
+  for (let i = 0; i < 40; i++) closes.push((v += i % 2 ? 0.08 : -0.1));
+  for (let i = 0; i < 10; i++) closes.push((v -= 0.16));
+  for (let i = 0; i < 10; i++) closes.push((v += 0.13));
+  for (let i = 0; i < 25; i++) closes.push((v += i % 2 ? 0.1 : -0.22));
+  for (let i = 0; i < 6; i++) closes.push((v += 0.12));
+  const t0 = touchT - 60 * M5;
+  return closes.map((c, i) => {
+    const o = i ? closes[i - 1] : c;
+    return { t: t0 + i * M5, o, c, h: Math.max(o, c) + 0.03, l: Math.min(o, c) - 0.03, v: 1 };
+  });
+}

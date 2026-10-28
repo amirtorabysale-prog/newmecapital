@@ -5,6 +5,11 @@
  *   ۲. هم‌پوشانیِ خط با سطحِ ۰.۶۱۸ فیبوناچیِ آخرین موجِ صعودی
  *   ۳. واگراییِ RSI (معمولی یا مخفی) روی همین کف
  *   ۴. الگوی کندلیِ برگشتی روی همین کف
+ *   ۵. واگراییِ RSI در تایم‌فریمِ 5 دقیقه، روی کفِ 5 دقیقه‌ایِ همین برخورد
+ *
+ * شرطِ ۵ کندل‌های 5 دقیقه را جدا می‌گیرد (`ltf`). اگر نیامده باشد (صرافی
+ * نداد، یا بک‌تست که تاریخچه‌ی 5 دقیقه ندارد) و شرط اختیاری باشد، از امتیاز
+ * کنار می‌رود — نبودِ داده نباید ستاپ را ضعیف‌تر نشان بدهد.
  *
  * هر شرط امتیاز دارد (وزن‌ها در config). شرطِ ۱ پایه است: بدونِ خط، بقیه
  * معنایی ندارند و امتیاز صفر است. «نزدیک به ستاپ» یعنی امتیاز از آستانه
@@ -24,15 +29,20 @@ export function mirrorCandles(candles) {
   return candles.map((k) => ({ t: k.t, o: -k.o, h: -k.l, l: -k.h, c: -k.c, v: k.v }));
 }
 
-export function analyze(candles, cfg, direction = 'long') {
-  const src = direction === 'short' ? mirrorCandles(candles) : candles;
-  const res = analyzeLong(src, cfg);
+export function analyze(candles, cfg, direction = 'long', ltf = null) {
+  const short = direction === 'short';
+  const src = short ? mirrorCandles(candles) : candles;
+  // ناحیه‌ی اشباع: کف زیرِ low، سقف بالای high. روی قیمتِ قرینه، RSI هم قرینه
+  // است (100 − RSI)، پس سقفِ 80 همان کفِ 20 ِ قرینه است.
+  const Z = cfg.strategy.rsiZone;
+  const zone = Z?.enabled ? (short ? 100 - Z.high : Z.low) : null;
+  const res = analyzeLong(src, cfg, ltf && (short ? mirrorCandles(ltf) : ltf), zone);
   if (!res) return null;
   res.direction = direction;
   return direction === 'short' ? unmirror(res) : res;
 }
 
-function analyzeLong(candles, cfg) {
+function analyzeLong(candles, cfg, ltf, zone) {
   const s = cfg.strategy;
   const C = s.conditions;
   const last = candles.length - 1;
@@ -77,8 +87,22 @@ function analyzeLong(candles, cfg) {
   };
 
   // ── واگرایی
-  const div = findDivergence(candles, r, k, s.divergence);
+  const div = findDivergence(candles, r, k, { ...s.divergence, zone });
   put('divergence', div ? 1 : 0);
+
+  // ── واگراییِ 5 دقیقه: فقط روی خط، روی پایین‌ترین کفِ 5 دقیقه از شروعِ کندلِ برخورد
+  const C5 = C.divergence5m;
+  let div5m = null;
+  if (C5?.enabled) {
+    if (!ltf?.length) {
+      // اختیاری ← از امتیاز بیرون · الزامی ← صفر، که ستاپ را می‌بندد
+      put('divergence5m', 0, { unavailable: true });
+      if (!C5.required) Object.assign(components.divergence5m, { enabled: false, max: 0 });
+    } else {
+      div5m = touching ? findLtfDivergence(ltf, candles[k].t, s, zone) : null;
+      put('divergence5m', div5m ? 1 : 0);
+    }
+  }
 
   // ── الگوی کندلی: فقط وقتی معنا دارد که قیمت واقعاً روی خط است
   const candle = touching ? findReversal(candles, A, s.candles.window) : null;
@@ -121,11 +145,21 @@ function analyzeLong(candles, cfg) {
     },
     fib,
     div,
+    div5m,
     candle,
     trend,
     volume,
     plan: touching ? buildPlan(candles, line, fib, A, s.plan) : null,
   };
+}
+
+function findLtfDivergence(ltf, fromT, s, zone) {
+  let k = -1;
+  for (let i = 0; i < ltf.length; i++) if (ltf[i].t >= fromT && (k < 0 || ltf[i].l < ltf[k].l)) k = i;
+  if (k < 0) return null;
+  const r = rsi(ltf.map((x) => x.c), s.rsiPeriod);
+  const d = findDivergence(ltf, r, k, { ...s.divergence5m, zone });
+  return d && { ...d, tP: ltf[d.p].t, tK: ltf[d.k].t };
 }
 
 function buildPlan(candles, line, fib, A, p) {
@@ -167,6 +201,12 @@ function unmirror(res) {
     res.div.priceK = neg(res.div.priceK);
     res.div.rsiP = 100 - res.div.rsiP;
     res.div.rsiK = 100 - res.div.rsiK;
+  }
+  if (res.div5m) {
+    res.div5m.priceP = neg(res.div5m.priceP);
+    res.div5m.priceK = neg(res.div5m.priceK);
+    res.div5m.rsiP = 100 - res.div5m.rsiP;
+    res.div5m.rsiK = 100 - res.div5m.rsiK;
   }
   if (res.candle) {
     res.candle.name = res.candle.bearName;

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newSignal, step, summarize } from '../src/tracker.js';
-import { applyEdits, validatePlan, hasEdits } from '../src/planEdit.js';
+import { newSignal, step, summarize, catchUp, needsCatchUp } from '../src/tracker.js';
+import { applyEdits, validatePlan, hasEdits, checkLivePrice } from '../src/planEdit.js';
 
 const T0 = Date.UTC(2026, 9, 1, 12);
 const M5 = 300_000;
@@ -101,4 +101,39 @@ test('ویرایشِ پلن: حد ضرر بالای ورود و تارگتِ ز�
   assert.match(validatePlan(applyEdits(plan, 'long', { sl: 101 }), 'long'), /حد ضرر باید زیرِ/);
   assert.match(validatePlan(applyEdits(plan, 'long', { tps: { 0: 99 } }), 'long'), /تارگت باید بالای/);
   assert.match(validatePlan(applyEdits(plan, 'long', { tps: { 0: null, 1: null, 2: null } }), 'long'), /دست‌کم یک تارگت/);
+});
+
+test('پیگیری بعد از خاموشیِ طولانی: اولِ فاصله با کندلِ ساعتی، بی‌هم‌پوشانی با 5 دقیقه', () => {
+  const H = 3_600_000;
+  const s = sig();
+  const now = T0 + 100 * H;
+  assert.ok(needsCatchUp(s, now));
+  assert.ok(!needsCatchUp(s, T0 + 10 * H));
+  // حد ضرر در ساعتِ دهم خورده — بیرون از پنجره‌ی 1000 کندلِ 5 دقیقه
+  const hourly = Array.from({ length: 100 }, (_, i) => ({ t: T0 + i * H, o: 100, c: 100, h: 100.5, l: i === 10 ? 97 : 99.5, v: 1 }));
+  const recentStart = now - 1000 * M5 + 2 * 60_000; // وسطِ یک ساعت
+  const recent = Array.from({ length: 999 }, (_, i) => ({ t: Math.ceil(recentStart / M5) * M5 + i * M5, o: 100, c: 100, h: 100.5, l: 99.5, v: 1 }));
+  const merged = catchUp(hourly, recent, s.lastT);
+  for (let i = 1; i < merged.length; i++) assert.ok(merged[i].t > merged[i - 1].t, 'ترتیب یا هم‌پوشانی');
+  const cut = merged[merged.findIndex((k, i) => i && k.t - merged[i - 1].t === M5) - 1].t;
+  assert.equal(cut % H, 0, '5 دقیقه باید از مرزِ ساعت شروع شود');
+  const ev = step(s, merged, now);
+  assert.equal(ev[0]?.type, 'sl');
+  assert.equal(ev[0].t, T0 + 10 * H);
+
+  // کندلِ ساعتی‌ای که lastT وسطش است هم دیده می‌شود
+  const mid = catchUp(hourly, recent, T0 + 10 * H + 20 * 60_000);
+  assert.equal(mid[0].t, T0 + 10 * H + 20 * 60_000);
+});
+
+test('انتشار با قیمتِ فعلی: گذشتن از حد ضرر یا تارگتِ اول، یا دور شدن از ورود ← رد', () => {
+  // ورود 100، حد ضرر 98، تارگتِ اول 102، ATR 1، حداکثر 0.5 ATR
+  assert.equal(checkLivePrice(plan, 'long', 100.3, 1, 0.5), null);
+  assert.match(checkLivePrice(plan, 'long', 97.9, 1, 0.5), /حد ضرر/);
+  assert.match(checkLivePrice(plan, 'long', 102.1, 1, 0.5), /تارگتِ اول/);
+  assert.match(checkLivePrice(plan, 'long', 100.8, 1, 0.5), /0.8 ATR/);
+  const short = { entry: 100, sl: 102, tps: [{ label: 'TP1', price: 98, rr: 1 }] };
+  assert.equal(checkLivePrice(short, 'short', 99.8, 1, 0.5), null);
+  assert.match(checkLivePrice(short, 'short', 102.2, 1, 0.5), /حد ضرر/);
+  assert.match(checkLivePrice(short, 'short', 97.5, 1, 0.5), /تارگتِ اول/);
 });
