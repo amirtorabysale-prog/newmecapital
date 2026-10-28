@@ -263,11 +263,11 @@ export function strategyText(cfg) {
       lines.push(`   سطحِ ${s.fib.level} · کامل ≤ ${s.fib.toleranceAtr} ATR · نصف ≤ ${s.fib.nearToleranceAtr} ATR`);
     } else if (key === 'divergence') {
       lines.push(`   RSI ${s.rsiPeriod} · کفِ قبلی ${s.divergence.minGap} تا ${s.divergence.lookback} کندل قبل`
-        + ` · اختلاف ≥ ${s.divergence.minRsiDelta} · مخفی ${s.divergence.allowHidden ? 'قبول' : 'نه'}${s.rsiZone?.enabled ? ` · اشباع: کف < ${s.rsiZone.low}، سقف > ${s.rsiZone.high}` : ''}`);
+        + ` · اختلاف ≥ ${s.divergence.minRsiDelta} · مخفی ${s.divergence.allowHidden ? 'قبول' : 'نه'}${s.rsiZone?.enabled ? ` · اشباع: کف &lt; ${s.rsiZone.low}، سقف &gt; ${s.rsiZone.high}` : ''}`);
     } else if (key === 'divergence5m') {
       const d = s.divergence5m;
       lines.push(`   کندلِ 5 دقیقه · RSI ${s.rsiPeriod} · کفِ قبلی ${d.minGap} تا ${d.lookback} کندل قبل`
-        + ` · اختلاف ≥ ${d.minRsiDelta} · مخفی ${d.allowHidden ? 'قبول' : 'نه'}${s.rsiZone?.enabled ? ` · اشباع: کف < ${s.rsiZone.low}، سقف > ${s.rsiZone.high}` : ''}`);
+        + ` · اختلاف ≥ ${d.minRsiDelta} · مخفی ${d.allowHidden ? 'قبول' : 'نه'}${s.rsiZone?.enabled ? ` · اشباع: کف &lt; ${s.rsiZone.low}، سقف &gt; ${s.rsiZone.high}` : ''}`);
     } else if (key === 'candle') {
       lines.push(`   روی ${s.candles.window} کندلِ آخر · پوشا/ستاره ×1، چکش ×0.9، نفوذی ×0.85، انبرک ×0.75، هارامی/دوجی ×0.6`);
     } else if (key === 'trendFilter') {
