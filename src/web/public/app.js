@@ -8,7 +8,7 @@ import { analyze, mirrorCandles } from './strategy/analyze.js';
 import { lineAt } from './strategy/trendline.js';
 import { rsi } from './strategy/indicators.js';
 import { PARAMS, CONDITIONS, getPath, setPath, coerce, formatValue } from './strategy/params.js';
-import { fitLine, fitDivergence, snapLow } from './strategy/fit.js';
+import { fitLine, fitDivergence } from './strategy/fit.js';
 
 const tg = window.Telegram?.WebApp;
 tg?.ready();
@@ -26,7 +26,10 @@ const el = (tag, attrs = {}, ...kids) => {
   return e;
 };
 
-const C = { line: '#38bdf8', teacher: '#f59e0b', fib: '#f59e0b', fibDim: '#94a3b8', div: '#a78bfa', entry: '#60a5fa', sl: '#ef4444', tp: '#22c55e', up: '#26a69a', down: '#ef5350' };
+// پالتِ چارتِ گلدمی (src/lib/theme.ts ِ آن پروژه): کندل و حالت فقط سبز/قرمز/خاکستری،
+// رسم‌ها رنگِ خودشان را دارند و به سبز و قرمزِ کندل نزدیک نیستند
+const C = { line: '#38bdf8', teacher: '#f59e0b', fib: '#2dd4bf', fibDim: '#8e929e', div: '#a78bfa', entry: '#d4a62a', sl: '#ef4444', tp: '#22c55e', up: '#22c55e', down: '#ef4444' };
+const SURFACE = { background: '#171d2b', grid: '#1e222d', border: '#2a2e39', crosshair: '#3a3f4d', text: '#8e929e' };
 
 const S = {
   init: null,
@@ -40,6 +43,8 @@ const S = {
   // آخرین رسمِ استاد از کدام نوع بود
   kind: 'line',
   pts: [],
+  // کندلی که اگر الان بزنی انتخاب می‌شود (پیش‌نمایش)
+  hover: null,
   fit: null,
 };
 
@@ -77,25 +82,29 @@ const changedPaths = () => Object.keys(S.draft).filter((p) => JSON.stringify(S.d
 // ───────────────────────────── چارت
 
 const LW = window.LightweightCharts;
-const css = getComputedStyle(document.documentElement);
+// ⚠️ متنِ فارسی روی بومِ چارت ممنوع: کتابخانه بی‌دوجهته می‌کشد و «روی خط» برعکس
+// خوانده می‌شود. برچسب‌های روی چارت لاتین‌اند (ENTRY / SL / TP / TOUCH).
+const crossLine = { color: SURFACE.crosshair, labelBackgroundColor: SURFACE.border };
 const theme = {
-  layout: { background: { type: 'solid', color: css.getPropertyValue('--bg').trim() || '#131722' }, textColor: '#9aa3b5', fontSize: 11 },
-  grid: { vertLines: { color: '#ffffff0a' }, horzLines: { color: '#ffffff0a' } },
-  timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#ffffff1a', rightOffset: 6 },
-  rightPriceScale: { borderColor: '#ffffff1a' },
-  crosshair: { mode: 0 },
+  localization: { locale: 'en-GB' },
+  layout: { background: { type: 'solid', color: SURFACE.background }, textColor: SURFACE.text, fontSize: 11, fontFamily: 'inherit' },
+  grid: { vertLines: { color: SURFACE.grid }, horzLines: { color: SURFACE.grid } },
+  timeScale: { timeVisible: true, secondsVisible: false, borderColor: SURFACE.border, rightOffset: 6, minBarSpacing: 2 },
+  rightPriceScale: { borderColor: SURFACE.border, scaleMargins: { top: 0.12, bottom: 0.12 } },
+  crosshair: { mode: 0, vertLine: crossLine, horzLine: crossLine },
   autoSize: true,
 };
 const chart = LW.createChart($('price'), theme);
 // RSI فقط دنباله‌روی چارتِ قیمت است — خودش اسکرول/زوم نمی‌شود تا دو چارت هم را بی‌پایان جابه‌جا نکنند
 const rsiChart = LW.createChart($('rsi'), { ...theme, timeScale: { ...theme.timeScale, visible: false }, handleScroll: false, handleScale: false });
 
-const candleS = chart.addCandlestickSeries({ upColor: C.up, downColor: C.down, wickUpColor: C.up, wickDownColor: C.down, borderVisible: false });
+// بدنه، مرز و سایه یک رنگ: مرزِ متفاوت کندل‌های باریک را لکه می‌کند
+const candleS = chart.addCandlestickSeries({ upColor: C.up, downColor: C.down, borderUpColor: C.up, borderDownColor: C.down, wickUpColor: C.up, wickDownColor: C.down });
 const quiet = { lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
 const botLineS = chart.addLineSeries({ color: C.line, lineWidth: 2, ...quiet });
 const teacherS = chart.addLineSeries({ color: C.teacher, lineWidth: 2, lineStyle: 2, ...quiet });
 const divS = chart.addLineSeries({ color: C.div, lineWidth: 2, lineStyle: 2, ...quiet });
-const rsiS = rsiChart.addLineSeries({ color: '#e2e8f0', lineWidth: 1, ...quiet, lastValueVisible: true });
+const rsiS = rsiChart.addLineSeries({ color: '#cbd5e1', lineWidth: 1, ...quiet, lastValueVisible: true });
 const rsiDivS = rsiChart.addLineSeries({ color: C.div, lineWidth: 2, lineStyle: 2, ...quiet });
 const teacherRsiS = rsiChart.addLineSeries({ color: C.teacher, lineWidth: 2, lineStyle: 2, ...quiet });
 let priceLines = [];
@@ -114,7 +123,9 @@ function setData() {
   const cs = S.data.candles;
   candleS.applyOptions({ priceFormat: precisionFor(cs.at(-1).c) });
   candleS.setData(cs.map((k, i) => ({ time: T(i), open: k.o, high: k.h, low: k.l, close: k.c })));
-  chart.timeScale().setVisibleLogicalRange({ from: cs.length - 150, to: cs.length + 6 });
+  // گوشی: ۱۵۰ کندل یعنی هر کندل ۲ پیکسل؛ کمتر نشان بده، با دو انگشت عقب برو
+  const bars = Math.max(60, Math.min(150, Math.round($('price').clientWidth / 6)));
+  chart.timeScale().setVisibleLogicalRange({ from: cs.length - bars, to: cs.length + 6 });
 }
 
 function seg(series, pts) {
@@ -152,7 +163,7 @@ function draw() {
     const L = res.line;
     seg(botLineS, [{ time: T(L.a), value: L.p0 }, { time: T(last), value: lineAt(L, last) }]);
     L.touches.forEach((t, n) => mk(t, String(n + 1), C.line));
-    if (L.state !== 'far') mk(L.touchIdx, L.state === 'touch' ? 'روی خط' : 'نزدیک', L.state === 'touch' ? C.tp : C.fib, 'circle');
+    if (L.state !== 'far') mk(L.touchIdx, L.state === 'touch' ? 'TOUCH' : 'NEAR', L.state === 'touch' ? C.tp : C.fib, 'circle');
 
     // فیبو
     const F = res.fib;
@@ -168,11 +179,11 @@ function draw() {
       divS.setData([]);
       rsiDivS.setData([]);
     }
-    if (res.candle) mk(res.candle.idx, res.candle.fa || res.candle.name, '#e879f9', 'square');
+    if (res.candle) mk(res.candle.idx, res.candle.name, '#e879f9', 'square');
 
     // پلن
     if (res.plan) {
-      pl(res.plan.entry, C.entry, 'ورود');
+      pl(res.plan.entry, C.entry, 'ENTRY');
       pl(res.plan.sl, C.sl, 'SL');
       for (const t of res.plan.tps) pl(t.price, C.tp, t.label, 2);
     }
@@ -197,6 +208,15 @@ function draw() {
     }
   }
   S.pts.forEach((i, n) => markers.push({ time: T(i), position: long ? 'belowBar' : 'aboveBar', color: C.teacher, shape: 'circle', text: n ? 'B' : 'A' }));
+  // پیش‌نمایش: کندلی که زیرِ انگشت/موس انتخاب می‌شود، و خطِ موقت از A تا آن
+  if (S.draw && S.hover != null && !S.pts.includes(S.hover)) {
+    markers.push({ time: T(S.hover), position: long ? 'belowBar' : 'aboveBar', color: '#f8fafc', shape: 'circle', text: S.pts.length ? 'B' : 'A' });
+    if (S.pts.length === 1) {
+      const y = (i) => (long ? cs[i].l : cs[i].h);
+      const [a, b] = [S.pts[0], S.hover].sort((x, z) => x - z);
+      seg(teacherS, [{ time: T(a), value: y(a) }, { time: T(b), value: y(b) }]);
+    }
+  }
 
   markers.sort((x, y) => x.time - y.time);
   candleS.setMarkers(markers);
@@ -385,12 +405,56 @@ function setDraw(mode) {
       : `روی ${low} اول بزن، بعد روی دومی.`;
 }
 
-chart.subscribeClick((param) => {
-  if (!S.draw || !S.data || param.logical == null) return;
+/**
+ * نقطه‌ی زیرِ انگشت → کندل: نزدیک‌ترین کف (برای فروش سقف) به خودِ نقطه، به
+ * پیکسل، در شعاعِ HIT_PX — نه پایین‌ترین کفِ اطراف. قبلاً پایین‌ترین low ِ ±۳
+ * کندل برداشته می‌شد و روی گوشی (هر کندل ~۲ پیکسل) نقطه جای دیگری می‌پرید.
+ */
+const HIT_PX = 22;
+function pickAt(point) {
+  if (!point || !S.data) return null;
   const cs = S.data.candles;
-  const raw = Math.max(0, Math.min(cs.length - 1, Math.round(param.logical)));
-  const src = S.dir === 'long' ? cs : mirrorCandles(cs);
-  const i = snapLow(src, raw);
+  const ts = chart.timeScale();
+  const logical = ts.coordinateToLogical(point.x);
+  if (logical == null) return null;
+  const spacing = Math.max(0.5, Math.abs((ts.logicalToCoordinate(1) ?? 0) - (ts.logicalToCoordinate(0) ?? 0)));
+  const r = Math.max(1, Math.ceil(HIT_PX / spacing));
+  const c = Math.round(logical);
+  let best = null;
+  let bestD = Infinity;
+  for (let j = Math.max(0, c - r); j <= Math.min(cs.length - 1, c + r); j++) {
+    const x = ts.logicalToCoordinate(j);
+    const y = candleS.priceToCoordinate(S.dir === 'long' ? cs[j].l : cs[j].h);
+    if (x == null || y == null) continue;
+    // افقی سنگین‌تر: انگشت معمولاً روی کندلِ درست است ولی دقیقاً روی سایه نیست
+    const d = Math.hypot((x - point.x) * 1.5, y - point.y);
+    if (d < bestD) { bestD = d; best = j; }
+  }
+  // از کندلِ زیرِ انگشت سراشیبی تا تهِ همان کف، ولی نه بیرون از شعاع: انگشت
+  // معمولاً یکی‌دو کندل کنارِ کف می‌نشیند، و خط و واگرایی کفِ واقعی می‌خواهند
+  const v = (j) => (S.dir === 'long' ? cs[j].l : -cs[j].h);
+  for (let moved = true; best != null && moved;) {
+    moved = false;
+    for (const j of [best - 1, best + 1]) {
+      if (j >= 0 && j < cs.length && Math.abs(j - c) <= r && v(j) < v(best)) { best = j; moved = true; break; }
+    }
+  }
+  return best;
+}
+
+chart.subscribeCrosshairMove((param) => {
+  if (!S.draw) return;
+  const j = pickAt(param.point);
+  if (j === S.hover) return;
+  S.hover = j;
+  draw();
+});
+
+chart.subscribeClick((param) => {
+  if (!S.draw || !S.data) return;
+  const i = pickAt(param.point);
+  if (i == null) return;
+  S.hover = null;
   if (S.pts.length >= 2) S.pts = [];
   if (S.pts.includes(i)) return;
   S.pts.push(i);
@@ -398,6 +462,7 @@ chart.subscribeClick((param) => {
   $('clear').hidden = false;
   if (S.pts.length === 2) {
     setDraw(null);
+    $('nudge').hidden = false;
     runFit();
   } else $('hint').textContent = `حالا ${S.dir === 'long' ? 'کفِ' : 'سقفِ'} ${S.draw === 'div' ? 'برخورد به خط' : 'دوم'}.`;
   draw();
@@ -470,8 +535,21 @@ function applyFit() {
   toast('اعمال شد. اگر روی ارزهای دیگر هم درست بود، «ذخیره» را بزن.', 3500);
 }
 
+/** جابه‌جا کردنِ A یا B یک کندل، برای وقتی انگشت درست ننشست */
+function nudge(n, d) {
+  const last = S.data.candles.length - 1;
+  const v = Math.max(0, Math.min(last, S.pts[n] + d));
+  if (S.pts.includes(v)) return;
+  S.pts[n] = v;
+  tg?.HapticFeedback?.selectionChanged();
+  runFit();
+  draw();
+}
+
 function clearTeacher() {
   S.pts = [];
+  S.hover = null;
+  $('nudge').hidden = true;
   S.fit = null;
   $('clear').hidden = true;
   setDraw(null);
@@ -535,6 +613,7 @@ async function main() {
   };
   $('draw').onclick = toggle('line');
   $('drawDiv').onclick = toggle('div');
+  for (const b of document.querySelectorAll('#nudge button')) b.onclick = () => nudge(Number(b.dataset.pt), Number(b.dataset.d));
   $('clear').onclick = clearTeacher;
   $('save').onclick = save;
   $('revert').onclick = revert;

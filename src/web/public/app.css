@@ -1,5 +1,5 @@
 :root {
-  --bg: var(--tg-theme-bg-color, #131722);
+  --bg: var(--tg-theme-bg-color, #171d2b);
   --bg2: var(--tg-theme-secondary-bg-color, #1c2030);
   --fg: var(--tg-theme-text-color, #e6e8ee);
   --muted: var(--tg-theme-hint-color, #8a90a2);
@@ -31,7 +31,7 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: tr
 .score { font-weight: 700; padding: 5px 10px; border-radius: 8px; background: var(--bg2); white-space: nowrap; direction: ltr; }
 .score.alert { background: #14532d; color: #86efac; }
 
-#charts { position: relative; direction: ltr; }
+#charts { position: relative; direction: ltr; background: #171d2b; }
 #price { height: 52vh; min-height: 280px; }
 #rsi { height: 15vh; min-height: 90px; border-top: 1px solid #ffffff14; }
 .overlay { position: absolute; inset: 0; display: grid; place-items: center; background: #000a; color: var(--fg); z-index: 3; text-align: center; padding: 16px; }
@@ -39,6 +39,9 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: tr
 .tools { display: flex; gap: 8px; align-items: center; padding: 8px 12px; flex-wrap: wrap; }
 .tools button.on { background: var(--teacher); color: #111; }
 .hint { color: var(--muted); font-size: 12px; }
+.nudge { padding-top: 0; }
+.nudge .pt { display: inline-flex; gap: 2px; align-items: center; direction: ltr; font-weight: 700; color: var(--teacher); }
+.nudge .pt button { padding: 4px 12px; }
 
 .card { margin: 0 12px 8px; padding: 10px 12px; border-radius: 10px; background: var(--bg2); border-right: 3px solid var(--teacher); }
 .card h3 { margin: 0 0 6px; font-size: 14px; }
