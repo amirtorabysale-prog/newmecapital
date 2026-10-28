@@ -1,14 +1,17 @@
 /**
  * چارتِ زنده: کندل‌ها از سرور، تحلیل همین‌جا با همان کدِ اسکن (src/strategy).
- * هر تغییرِ اسلایدر ← analyze ِ دوباره ← رسمِ دوباره. «ذخیره» تغییرها را به
- * بات می‌فرستد و از اسکنِ بعدی اعمال می‌شوند.
+ * دو صفحه برای هر ارز:
+ *   🤖 تحلیلِ بات  — تحلیلِ بات روی چارت؛ هر اسلایدر ← analyze ِ دوباره ← رسمِ
+ *                    دوباره. «ذخیره» از اسکنِ بعدی اعمال می‌شود.
+ *   ✍️ تحلیلِ استاد — چارتِ خالی و ابزارِ رسمِ خط، فیبو، واگرایی و کندل. fitAll
+ *                    تنظیمی را پیدا می‌کند که بات همان را ببیند؛ «تأیید» ذخیره‌اش می‌کند.
  */
 
-import { analyze, mirrorCandles } from './strategy/analyze.js';
+import { analyze } from './strategy/analyze.js';
 import { lineAt } from './strategy/trendline.js';
 import { rsi } from './strategy/indicators.js';
 import { PARAMS, CONDITIONS, getPath, setPath, coerce, formatValue } from './strategy/params.js';
-import { fitLine, fitDivergence } from './strategy/fit.js';
+import { fitAll } from './strategy/fit.js';
 
 const tg = window.Telegram?.WebApp;
 tg?.ready();
@@ -28,7 +31,7 @@ const el = (tag, attrs = {}, ...kids) => {
 
 // پالتِ چارتِ گلدمی (src/lib/theme.ts ِ آن پروژه): کندل و حالت فقط سبز/قرمز/خاکستری،
 // رسم‌ها رنگِ خودشان را دارند و به سبز و قرمزِ کندل نزدیک نیستند
-const C = { line: '#38bdf8', teacher: '#f59e0b', fib: '#2dd4bf', fibDim: '#8e929e', div: '#a78bfa', entry: '#d4a62a', sl: '#ef4444', tp: '#22c55e', up: '#22c55e', down: '#ef4444' };
+const C = { line: '#38bdf8', teacher: '#f59e0b', fib: '#2dd4bf', fibDim: '#8e929e', div: '#a78bfa', candle: '#e879f9', entry: '#d4a62a', sl: '#ef4444', tp: '#22c55e', up: '#22c55e', down: '#ef4444' };
 const SURFACE = { background: '#171d2b', grid: '#1e222d', border: '#2a2e39', crosshair: '#3a3f4d', text: '#8e929e' };
 
 const S = {
@@ -38,14 +41,20 @@ const S = {
   data: null,
   dir: 'long',
   res: null,
-  // حالتِ رسم: null، 'line' (خطِ روند) یا 'div' (واگرایی)
-  draw: null,
-  // آخرین رسمِ استاد از کدام نوع بود
-  kind: 'line',
-  pts: [],
+  // 'bot' یا 'teacher'
+  mode: 'bot',
+  // ── تحلیلِ استاد
+  // رسم‌ها: { line: [a,b], fib: [lo,hi], div: [p,q], candle: i }
+  t: {},
+  fibLevel: null,
+  // ابزارِ فعال و نقطه‌هایی که تا حالا زده شده
+  tool: null,
+  pend: [],
+  // آخرین ابزار، برای دکمه‌های جابه‌جایی
+  last: null,
   // کندلی که اگر الان بزنی انتخاب می‌شود (پیش‌نمایش)
   hover: null,
-  fit: null,
+  all: null,
 };
 
 // ───────────────────────────── API
@@ -71,11 +80,14 @@ function toast(msg, ms = 2500) {
 
 // ───────────────────────────── پیکربندیِ پیش‌نویس
 
-function draftCfg() {
+function cfgFrom(values) {
   const cfg = { strategy: structuredClone(S.init.strategy) };
-  for (const [path, v] of Object.entries(S.draft)) setPath(cfg, path, structuredClone(v));
+  for (const [path, v] of Object.entries(values)) setPath(cfg, path, structuredClone(v));
   return cfg;
 }
+const draftCfg = () => cfgFrom(S.draft);
+// تحلیلِ استاد روی استراتژیِ ذخیره‌شده سنجیده می‌شود، نه پیش‌نویسِ اسلایدرها
+const savedCfg = () => cfgFrom(S.saved);
 
 const changedPaths = () => Object.keys(S.draft).filter((p) => JSON.stringify(S.draft[p]) !== JSON.stringify(S.saved[p]));
 
@@ -106,7 +118,9 @@ const teacherS = chart.addLineSeries({ color: C.teacher, lineWidth: 2, lineStyle
 const divS = chart.addLineSeries({ color: C.div, lineWidth: 2, lineStyle: 2, ...quiet });
 const rsiS = rsiChart.addLineSeries({ color: '#cbd5e1', lineWidth: 1, ...quiet, lastValueVisible: true });
 const rsiDivS = rsiChart.addLineSeries({ color: C.div, lineWidth: 2, lineStyle: 2, ...quiet });
-const teacherRsiS = rsiChart.addLineSeries({ color: C.teacher, lineWidth: 2, lineStyle: 2, ...quiet });
+const teacherRsiS = rsiChart.addLineSeries({ color: C.div, lineWidth: 2, lineStyle: 2, ...quiet });
+const tDivS = chart.addLineSeries({ color: C.div, lineWidth: 2, ...quiet });
+const previewS = chart.addLineSeries({ color: '#f8fafc', lineWidth: 1, lineStyle: 2, ...quiet });
 let priceLines = [];
 let rsiLines = [];
 
@@ -136,8 +150,8 @@ function draw() {
   if (!S.data) return;
   const cs = S.data.candles;
   const last = cs.length - 1;
-  const res = S.res;
-  const cfg = draftCfg();
+  const res = S.mode === 'bot' ? S.res : null;
+  const cfg = S.mode === 'bot' ? draftCfg() : savedCfg();
   const long = S.dir === 'long';
 
   for (const pl of priceLines) candleS.removePriceLine(pl);
@@ -193,30 +207,8 @@ function draw() {
     rsiDivS.setData([]);
   }
 
-  // رسمِ استاد: خطِ روند تا آخرِ چارت ادامه دارد؛ واگرایی فقط بینِ دو کف، روی قیمت و RSI
-  teacherS.setData([]);
-  teacherRsiS.setData([]);
-  if (S.pts.length === 2) {
-    const [a, b] = [...S.pts].sort((x, y) => x - y);
-    const y = (i) => (long ? cs[i].l : cs[i].h);
-    if (S.kind === 'div') {
-      seg(teacherS, [{ time: T(a), value: y(a) }, { time: T(b), value: y(b) }]);
-      if (Number.isFinite(r[a]) && Number.isFinite(r[b])) seg(teacherRsiS, [{ time: T(a), value: r[a] }, { time: T(b), value: r[b] }]);
-    } else {
-      const slope = (y(b) - y(a)) / (b - a);
-      seg(teacherS, [{ time: T(a), value: y(a) }, { time: T(last), value: y(a) + slope * (last - a) }]);
-    }
-  }
-  S.pts.forEach((i, n) => markers.push({ time: T(i), position: long ? 'belowBar' : 'aboveBar', color: C.teacher, shape: 'circle', text: n ? 'B' : 'A' }));
-  // پیش‌نمایش: کندلی که زیرِ انگشت/موس انتخاب می‌شود، و خطِ موقت از A تا آن
-  if (S.draw && S.hover != null && !S.pts.includes(S.hover)) {
-    markers.push({ time: T(S.hover), position: long ? 'belowBar' : 'aboveBar', color: '#f8fafc', shape: 'circle', text: S.pts.length ? 'B' : 'A' });
-    if (S.pts.length === 1) {
-      const y = (i) => (long ? cs[i].l : cs[i].h);
-      const [a, b] = [S.pts[0], S.hover].sort((x, z) => x - z);
-      seg(teacherS, [{ time: T(a), value: y(a) }, { time: T(b), value: y(b) }]);
-    }
-  }
+  if (S.mode === 'teacher') drawTeacher(markers, pl, r);
+  else for (const x of [teacherS, tDivS, teacherRsiS, previewS]) x.setData([]);
 
   markers.sort((x, y) => x.time - y.time);
   candleS.setMarkers(markers);
@@ -236,6 +228,7 @@ function recompute() {
 }
 
 function summary() {
+  if (S.mode !== 'bot') return;
   const res = S.res;
   const thr = S.draft.alertThreshold;
   const sc = $('score');
@@ -245,7 +238,7 @@ function summary() {
   if (!res) {
     sc.textContent = 'بدون خط';
     sc.className = 'score';
-    info.textContent = 'با این تنظیمات خطِ روندِ معتبری پیدا نشد. «قدرتِ کف» یا «حداقلِ واکنش» را کم کن، یا خطِ استاد را رسم کن.';
+    info.textContent = 'با این تنظیمات خطِ روندِ معتبری پیدا نشد. «قدرتِ کف» یا «حداقلِ واکنش» را کم کن، یا در «✍️ تحلیلِ استاد» خودت رسم کن.';
     return;
   }
   sc.textContent = `${res.score}/100`;
@@ -353,7 +346,8 @@ function buildControls() {
 }
 
 function dirty() {
-  const n = changedPaths().length;
+  // صفحه‌ی استاد ذخیره‌ی خودش را دارد («تأیید»)
+  const n = S.mode === 'bot' ? changedPaths().length : 0;
   $('savebar').hidden = !n;
   $('dirty').textContent = `${n} تغییرِ ذخیره‌نشده`;
   if (tg?.MainButton) {
@@ -375,6 +369,7 @@ async function save() {
     renderSummaries();
     dirty();
     recompute();
+    teacherRun();
     tg?.HapticFeedback?.notificationOccurred('success');
     toast(r.errors.length ? `ذخیره شد، با خطا: ${r.errors.join(' · ')}` : `✅ ${r.saved} تغییر ذخیره شد؛ از اسکنِ بعدی اعمال می‌شود.`, 4000);
   } catch (e) {
@@ -392,39 +387,81 @@ function revert() {
   recompute();
 }
 
-// ───────────────────────────── رسمِ استاد (خطِ روند / واگرایی)
+// ───────────────────────────── دو صفحه
 
-function setDraw(mode) {
-  S.draw = mode;
-  if (mode) S.kind = mode;
-  $('draw').classList.toggle('on', mode === 'line');
-  $('drawDiv').classList.toggle('on', mode === 'div');
-  const low = S.dir === 'long' ? 'کفِ' : 'سقفِ';
-  $('hint').textContent = !mode ? ''
-    : mode === 'div' ? `روی ${low} قبلی بزن، بعد روی ${low} برخورد به خط (دایره‌ی «روی خط»).`
-      : `روی ${low} اول بزن، بعد روی دومی.`;
+function setMode(mode) {
+  S.mode = mode;
+  for (const b of $('mode').children) b.classList.toggle('on', b.dataset.mode === mode);
+  const bot = mode === 'bot';
+  for (const id of ['chips', 'info', 'controls']) $(id).hidden = !bot;
+  for (const id of ['ttools', 'thint']) $(id).hidden = bot;
+  S.tool = null;
+  S.pend = [];
+  S.hover = null;
+  try {
+    const u = new URL(location.href);
+    u.searchParams.set('mode', mode);
+    history.replaceState(null, '', u);
+  } catch { /* اختیاری */ }
+  renderTools();
+  renderReview();
+  dirty();
+  draw();
+  if (bot) summary();
+  else teacherScore();
 }
 
+// ───────────────────────────── تحلیلِ استاد
+
 /**
- * نقطه‌ی زیرِ انگشت → کندل: نزدیک‌ترین کف (برای فروش سقف) به خودِ نقطه، به
- * پیکسل، در شعاعِ HIT_PX — نه پایین‌ترین کفِ اطراف. قبلاً پایین‌ترین low ِ ±۳
- * کندل برداشته می‌شد و روی گوشی (هر کندل ~۲ پیکسل) نقطه جای دیگری می‌پرید.
+ * هر ابزار چند نقطه دارد و هر نقطه از چه نوعی است:
+ *   low  — کف (برای فروش سقف): همان چیزی که خط و واگرایی رویش بنا می‌شوند
+ *   high — سقفِ موج (برای فروش کف): سرِ دومِ فیبو
+ *   x    — خودِ کندل، بی‌توجه به قیمت: کندلِ برگشتی
+ */
+const TOOLS = {
+  line: { fa: 'خط روند', icon: '📏', pts: ['low', 'low'], tag: 'L', color: C.teacher },
+  fib: { fa: 'فیبوناچی', icon: '🌀', pts: ['low', 'high'], tag: 'F', color: C.fib },
+  div: { fa: 'واگرایی RSI', icon: '〰️', pts: ['low', 'low'], tag: 'D', color: C.div },
+  candle: { fa: 'کندل برگشتی', icon: '🕯', pts: ['x'], tag: 'C', color: C.candle },
+};
+
+function toolHint(key, n) {
+  const [lo, hi] = S.dir === 'long' ? ['کفِ', 'سقفِ'] : ['سقفِ', 'کفِ'];
+  return {
+    line: [`روی ${lo} اول بزن.`, `حالا ${lo} دوم.`],
+    fib: [`روی ${lo} موج بزن (شروعِ فیبو).`, `حالا ${hi} موج.`],
+    div: [`روی ${lo} قبلی بزن.`, `حالا ${lo} برخورد به خط (K روی چارت).`],
+    candle: ['روی کندلِ آخرِ الگو بزن.'],
+  }[key][n];
+}
+
+// «کفِ» یک نقطه روی چارتِ واقعی: خرید low، فروش high (و برعکس برای سقفِ موج)
+const usesLow = (kind) => (S.dir === 'long') === (kind !== 'high');
+const priceOf = (i, kind) => (usesLow(kind) ? S.data.candles[i].l : S.data.candles[i].h);
+const posOf = (kind) => (usesLow(kind) ? 'belowBar' : 'aboveBar');
+
+/**
+ * نقطه‌ی زیرِ انگشت → کندل: نزدیک‌ترین کف/سقف به خودِ نقطه، به پیکسل، در
+ * شعاعِ HIT_PX — نه پایین‌ترین کفِ اطراف. قبلاً پایین‌ترین low ِ ±۳ کندل
+ * برداشته می‌شد و روی گوشی (هر کندل ~۲ پیکسل) نقطه جای دیگری می‌پرید.
  */
 const HIT_PX = 22;
-function pickAt(point) {
+function pickAt(point, kind) {
   if (!point || !S.data) return null;
   const cs = S.data.candles;
   const ts = chart.timeScale();
   const logical = ts.coordinateToLogical(point.x);
   if (logical == null) return null;
+  const c = Math.max(0, Math.min(cs.length - 1, Math.round(logical)));
+  if (kind === 'x') return c;
   const spacing = Math.max(0.5, Math.abs((ts.logicalToCoordinate(1) ?? 0) - (ts.logicalToCoordinate(0) ?? 0)));
   const r = Math.max(1, Math.ceil(HIT_PX / spacing));
-  const c = Math.round(logical);
   let best = null;
   let bestD = Infinity;
   for (let j = Math.max(0, c - r); j <= Math.min(cs.length - 1, c + r); j++) {
     const x = ts.logicalToCoordinate(j);
-    const y = candleS.priceToCoordinate(S.dir === 'long' ? cs[j].l : cs[j].h);
+    const y = candleS.priceToCoordinate(priceOf(j, kind));
     if (x == null || y == null) continue;
     // افقی سنگین‌تر: انگشت معمولاً روی کندلِ درست است ولی دقیقاً روی سایه نیست
     const d = Math.hypot((x - point.x) * 1.5, y - point.y);
@@ -432,7 +469,7 @@ function pickAt(point) {
   }
   // از کندلِ زیرِ انگشت سراشیبی تا تهِ همان کف، ولی نه بیرون از شعاع: انگشت
   // معمولاً یکی‌دو کندل کنارِ کف می‌نشیند، و خط و واگرایی کفِ واقعی می‌خواهند
-  const v = (j) => (S.dir === 'long' ? cs[j].l : -cs[j].h);
+  const v = (j) => (usesLow(kind) ? cs[j].l : -cs[j].h);
   for (let moved = true; best != null && moved;) {
     moved = false;
     for (const j of [best - 1, best + 1]) {
@@ -443,118 +480,270 @@ function pickAt(point) {
 }
 
 chart.subscribeCrosshairMove((param) => {
-  if (!S.draw) return;
-  const j = pickAt(param.point);
+  if (S.mode !== 'teacher' || !S.tool) return;
+  const j = pickAt(param.point, TOOLS[S.tool].pts[S.pend.length]);
   if (j === S.hover) return;
   S.hover = j;
   draw();
 });
 
 chart.subscribeClick((param) => {
-  if (!S.draw || !S.data) return;
-  const i = pickAt(param.point);
-  if (i == null) return;
+  if (S.mode !== 'teacher' || !S.tool || !S.data) return;
+  const kinds = TOOLS[S.tool].pts;
+  const i = pickAt(param.point, kinds[S.pend.length]);
+  if (i == null || S.pend.includes(i)) return;
+  S.pend.push(i);
   S.hover = null;
-  if (S.pts.length >= 2) S.pts = [];
-  if (S.pts.includes(i)) return;
-  S.pts.push(i);
   tg?.HapticFeedback?.selectionChanged();
-  $('clear').hidden = false;
-  if (S.pts.length === 2) {
-    setDraw(null);
-    $('nudge').hidden = false;
-    runFit();
-  } else $('hint').textContent = `حالا ${S.dir === 'long' ? 'کفِ' : 'سقفِ'} ${S.draw === 'div' ? 'برخورد به خط' : 'دوم'}.`;
+  if (S.pend.length === kinds.length) {
+    S.t[S.tool] = kinds.length === 1 ? S.pend[0] : [...S.pend];
+    if (S.tool === 'fib') S.fibLevel = null;
+    S.last = S.tool;
+    S.tool = null;
+    S.pend = [];
+    teacherRun();
+  }
+  renderTools();
   draw();
 });
 
-function runFit() {
-  const cs = S.data.candles;
-  const src = S.dir === 'long' ? cs : mirrorCandles(cs);
-  const [a, b] = [...S.pts].sort((x, y) => x - y);
-  const cfg = draftCfg();
-  if (S.kind === 'div') {
-    const k = S.res?.line.touchIdx ?? null;
-    S.fit = { ...fitDivergence(src, cfg.strategy, a, b, k, S.dir === 'short'), kind: 'div' };
-    // بات کفِ دوم را روی خودِ کندلِ برخورد می‌گیرد؛ رسم هم همان را نشان دهد
-    if (k != null && Math.abs(b - k) <= 2) S.pts = [a, k];
-    draw();
-  } else S.fit = { ...fitLine(src, cfg.strategy, a, b), kind: 'line' };
-  renderFit();
-}
-
-function renderFit() {
-  const box = $('fit');
-  const f = S.fit;
-  if (!f) { box.hidden = true; return; }
-  box.hidden = false;
-  const name = (path) => PARAMS.find((p) => p.path === path);
-  const div = f.kind === 'div';
-  const what = div ? 'واگرایی' : 'خط';
-  // برای واگرایی: نوع و RSI ِ دو کف (روی فروش RSI ِ واقعی = 100 − قرینه)
-  const rv = (v) => (S.dir === 'short' ? 100 - v : v).toFixed(1);
-  const note = div && f.type
-    ? el('p', { class: 'hint' }, `${f.type === 'regular' ? 'واگراییِ معمولی' : 'واگراییِ مخفی'} · RSI: ${rv(f.rsiP)} ← ${rv(f.rsiK)}`)
-    : '';
-  if (!f.ok) {
-    box.replaceChildren(
-      el('h3', {}, `بات این ${what} را ${div ? 'قبول نمی‌کند' : 'نمی‌تواند پیدا کند'}`),
-      note,
-      el('ul', {}, f.reasons.map((r) => el('li', {}, r))),
-      el('div', { class: 'row' }, el('button', { onclick: clearTeacher }, 'پاک کردن')),
-    );
-    return;
-  }
-  if (!f.changes.length) {
-    box.replaceChildren(el('h3', {}, `✅ بات با تنظیماتِ فعلی همین ${what} را پیدا می‌کند`), note,
-      el('div', { class: 'row' }, el('button', { onclick: clearTeacher }, 'پاک کردن')));
-    return;
-  }
-  box.replaceChildren(
-    el('h3', {}, `برای این‌که بات همین ${what} را پیدا کند:`),
-    note,
-    el('ul', {}, f.changes.map((c) => {
-      const p = name(c.path);
-      return el('li', {}, `${p.fa}: ${formatValue(p, c.from)} ← ${formatValue(p, c.to)}`);
-    })),
-    el('div', { class: 'row' },
-      el('button', { class: 'primary', onclick: applyFit }, 'اعمال روی چارت'),
-      el('button', { onclick: clearTeacher }, 'پاک کردن')),
-  );
-}
-
-function applyFit() {
-  for (const c of S.fit.changes) {
-    S.draft[c.path] = c.to;
-    ctls.get(c.path)?.render();
-  }
-  S.fit = { ...S.fit, changes: [] };
-  renderFit();
-  dirty();
-  recompute();
-  toast('اعمال شد. اگر روی ارزهای دیگر هم درست بود، «ذخیره» را بزن.', 3500);
-}
-
-/** جابه‌جا کردنِ A یا B یک کندل، برای وقتی انگشت درست ننشست */
-function nudge(n, d) {
-  const last = S.data.candles.length - 1;
-  const v = Math.max(0, Math.min(last, S.pts[n] + d));
-  if (S.pts.includes(v)) return;
-  S.pts[n] = v;
-  tg?.HapticFeedback?.selectionChanged();
-  runFit();
-  draw();
-}
-
-function clearTeacher() {
-  S.pts = [];
+function pickTool(key) {
+  S.tool = S.tool === key ? null : key;
+  S.pend = [];
   S.hover = null;
-  $('nudge').hidden = true;
-  S.fit = null;
-  $('clear').hidden = true;
-  setDraw(null);
-  renderFit();
+  renderTools();
   draw();
+}
+
+function renderTools() {
+  const box = $('ttools');
+  const items = S.all?.items || {};
+  box.replaceChildren(...Object.entries(TOOLS).map(([key, T]) => {
+    const st = S.t[key] == null ? '' : items[key]?.ok ? '✅' : '❌';
+    return el('button', { class: S.tool === key ? 'on' : '', onclick: () => pickTool(key) },
+      `${T.icon} ${T.fa}`, st ? el('span', { class: 'st' }, st) : null);
+  }));
+  if (Object.keys(S.t).length) box.append(el('button', { class: 'ghost', onclick: () => clearTeacher() }, '🗑 پاک کردنِ همه'));
+  $('hint').textContent = S.tool ? toolHint(S.tool, S.pend.length)
+    : Object.keys(S.t).length ? '' : 'ابزار را انتخاب کن و روی چارت بزن. از خطِ روند شروع کن؛ بقیه به آن وابسته‌اند.';
+  renderNudge();
+}
+
+/** جابه‌جا کردنِ نقطه‌های آخرین رسم یک کندل، برای وقتی انگشت درست ننشست */
+function renderNudge() {
+  const box = $('nudge');
+  const key = S.last;
+  const v = key && S.t[key];
+  box.hidden = S.mode !== 'teacher' || v == null || S.tool != null;
+  if (box.hidden) return;
+  const pts = Array.isArray(v) ? v : [v];
+  box.replaceChildren(el('span', { class: 'hint' }, `جابه‌جاییِ ${TOOLS[key].fa}:`), ...pts.map((_, n) => el('span', { class: 'pt' },
+    `${TOOLS[key].tag}${pts.length > 1 ? n + 1 : ''} `,
+    el('button', { onclick: () => nudge(key, n, -1) }, '◀'),
+    el('button', { onclick: () => nudge(key, n, 1) }, '▶'))));
+}
+
+function nudge(key, n, d) {
+  const last = S.data.candles.length - 1;
+  const v = S.t[key];
+  if (Array.isArray(v)) {
+    const to = Math.max(0, Math.min(last, v[n] + d));
+    if (v.includes(to)) return;
+    v[n] = to;
+  } else S.t[key] = Math.max(0, Math.min(last, v + d));
+  tg?.HapticFeedback?.selectionChanged();
+  teacherRun();
+}
+
+function removeDrawing(key) {
+  delete S.t[key];
+  if (S.last === key) S.last = null;
+  teacherRun();
+}
+
+function teacherRun() {
+  if (!S.data) return;
+  S.all = Object.keys(S.t).length
+    ? fitAll(S.data.candles, savedCfg(), S.dir, { ...S.t, fibLevel: S.fibLevel }, S.data.ltf)
+    : null;
+  // بات کفِ دومِ واگرایی را روی خودِ کندلِ برخورد می‌گیرد؛ رسم هم همان را نشان دهد
+  const D = S.all?.items.div;
+  if (S.t.div && D?.k != null && Math.abs(Math.max(...S.t.div) - D.k) <= 2) S.t.div = [D.p, D.k];
+  renderTools();
+  renderReview();
+  teacherScore();
+  draw();
+}
+
+function teacherScore() {
+  if (S.mode !== 'teacher') return;
+  const f = S.all?.final;
+  $('score').textContent = f ? `${f.score}/100` : '—';
+  $('score').className = `score${f && f.alertable && f.score >= S.saved.alertThreshold ? ' alert' : ''}`;
+}
+
+const label = (path) => {
+  const p = PARAMS.find((q) => q.path === path);
+  const group = CONDITIONS[p.group]?.fa;
+  return { p, text: group && !p.fa.startsWith(group) ? `${group} · ${p.fa}` : p.fa };
+};
+
+function renderReview() {
+  const box = $('review');
+  const A = S.all;
+  box.hidden = S.mode !== 'teacher' || !A;
+  if (box.hidden) return;
+  const rv = (v) => (S.dir === 'short' ? 100 - v : v).toFixed(1);
+  const detail = {
+    line: (f) => (f.ok ? `بات همین خط را می‌بیند${A.final ? ` · ${A.final.line.touches.length} برخورد` : ''}.` : ''),
+    fib: (f) => (f.retrace != null ? `خط در کندلِ برخورد روی سطحِ ${f.retrace.toFixed(3)} فیبو است؛ تا سطحِ ${f.level}: ${f.distAtr.toFixed(2)} ATR.` : ''),
+    div: (f) => (f.type ? `${f.type === 'regular' ? 'واگراییِ معمولی' : 'واگراییِ مخفی'} · RSI: ${rv(f.rsiP)} ← ${rv(f.rsiK)}` : ''),
+    candle: (f) => (f.pattern ? `${f.pattern.fa} (${f.pattern.name})` : ''),
+  };
+  const kids = [el('h3', {}, 'بررسیِ تحلیلِ استاد')];
+  for (const key of Object.keys(TOOLS)) {
+    const f = A.items[key];
+    if (!f) continue;
+    const head = el('h4', {}, el('span', {}, `${f.ok ? '✅' : '❌'} ${TOOLS[key].icon} ${TOOLS[key].fa}`), el('span', { class: 'acts' },
+      el('button', { onclick: () => pickTool(key) }, '✏️'),
+      el('button', { onclick: () => removeDrawing(key) }, '✖')));
+    const item = el('div', { class: 'item' }, head);
+    const d = detail[key](f);
+    if (d) item.append(el('p', { class: 'hint' }, d));
+    if (!f.ok && f.reasons.length) item.append(el('ul', {}, f.reasons.map((r) => el('li', {}, r))));
+    if (key === 'fib' && f.level != null) {
+      // استاد می‌تواند بگوید منظورش کدام سطح بود
+      item.append(el('div', { class: 'levels' }, PARAMS.find((q) => q.path === 'strategy.fib.level').choices.map((c) => el('button', {
+        class: c === f.level ? 'on' : '',
+        onclick: () => { S.fibLevel = c; teacherRun(); },
+      }, String(c)))));
+    }
+    kids.push(item);
+  }
+
+  const total = el('div', { class: 'total' });
+  if (A.changes.length) {
+    total.append(el('p', {}, 'برای این‌که بات همین تحلیل را ببیند، استراتژی این‌طور عوض می‌شود:'),
+      el('ul', {}, A.changes.map((c) => {
+        const { p, text } = label(c.path);
+        return el('li', {}, `${text}: ${formatValue(p, c.from)} ← ${formatValue(p, c.to)}`);
+      })));
+  } else if (Object.values(A.items).every((f) => f.ok)) {
+    total.append(el('p', {}, '✅ بات با استراتژیِ فعلی همین تحلیل را می‌بیند؛ چیزی برای تغییر نیست.'));
+  }
+  if (A.final) {
+    const on = Object.entries(A.final.components).filter(([, c]) => c.enabled)
+      .map(([key, c]) => `${c.ok ? '✓' : c.partial ? '½' : '✗'} ${CONDITIONS[key].fa}`);
+    total.append(el('p', { class: 'hint' }, `با این استراتژی بات این چارت را ${A.final.score}/100 می‌بیند: ${on.join('، ')}`));
+    // امتیاز فقط وقتی قیمت به خط رسیده معنا دارد
+    if (A.final.line.state === 'far') total.append(el('p', { class: 'hint' }, `قیمت الان ${A.final.line.distAtr.toFixed(1)} ATR از خط دور است؛ امتیاز وقتی قیمت به خط برسد حساب می‌شود.`));
+  }
+  if (Object.values(A.items).some((f) => !f.ok)) {
+    total.append(el('p', { class: 'warn' }, A.changes.length ? 'موردهای ❌ در استراتژی نمی‌آیند؛ «تأیید» فقط موردهای ✅ را ذخیره می‌کند.' : 'موردهای ❌ را درست کن یا پاک کن.'));
+  }
+  if (A.changes.length) {
+    total.append(el('p', { class: 'warn' }, '⚠️ استراتژی برای همه‌ی ارزهاست؛ این تغییر روی اسکنِ بقیه هم اثر دارد.'));
+    const btn = el('button', { class: 'primary confirm' }, '✅ تأیید — این بشود استراتژی');
+    btn.onclick = () => {
+      // دو مرحله: دکمه‌ی اشتباهی نباید استراتژی را عوض کند
+      if (!btn.dataset.sure) {
+        btn.dataset.sure = '1';
+        btn.textContent = 'مطمئنی؟ دوباره بزن تا ذخیره شود';
+        setTimeout(() => { delete btn.dataset.sure; btn.textContent = '✅ تأیید — این بشود استراتژی'; }, 4000);
+        return;
+      }
+      confirmTeacher();
+    };
+    total.append(btn);
+  }
+  kids.push(total);
+  box.replaceChildren(...kids);
+}
+
+async function confirmTeacher() {
+  const values = Object.fromEntries(S.all.changes.map((c) => [c.path, c.to]));
+  try {
+    const r = await api('save', { values });
+    S.saved = { ...r.values };
+    // پیش‌نویسِ اسلایدرهای صفحه‌ی بات هم از استراتژیِ تازه شروع شود
+    S.draft = structuredClone(r.values);
+    for (const c of ctls.values()) c.render();
+    renderSummaries();
+    dirty();
+    recompute();
+    teacherRun();
+    tg?.HapticFeedback?.notificationOccurred('success');
+    toast(r.errors.length ? `ذخیره شد، با خطا: ${r.errors.join(' · ')}` : `✅ استراتژی عوض شد (${r.saved} تغییر)؛ از اسکنِ بعدی اعمال می‌شود.`, 4500);
+  } catch (e) {
+    toast(`❌ ${e.message}`, 4000);
+  }
+}
+
+function clearTeacher(run = true) {
+  S.t = {};
+  S.fibLevel = null;
+  S.tool = null;
+  S.pend = [];
+  S.last = null;
+  S.hover = null;
+  S.all = null;
+  if (run) teacherRun();
+}
+
+/** رسم‌های استاد روی چارتِ خالی (draw صدایش می‌زند) */
+function drawTeacher(markers, pl, r) {
+  const cs = S.data.candles;
+  const last = cs.length - 1;
+  const items = S.all?.items || {};
+  const mark = (i, kind, tag, color, shape = 'circle') => markers.push({ time: T(i), position: posOf(kind), color, shape, text: tag });
+  for (const x of [teacherS, tDivS, teacherRsiS, previewS]) x.setData([]);
+
+  if (S.t.line) {
+    const [a, b] = [...S.t.line].sort((x, y) => x - y);
+    const slope = (priceOf(b, 'low') - priceOf(a, 'low')) / (b - a);
+    seg(teacherS, [{ time: T(a), value: priceOf(a, 'low') }, { time: T(last), value: priceOf(a, 'low') + slope * (last - a) }]);
+    S.t.line.forEach((i, n) => mark(i, 'low', `L${n + 1}`, TOOLS.line.color));
+  }
+  if (S.t.fib) {
+    const [lo, hi] = S.t.fib;
+    const start = priceOf(lo, 'low');
+    const end = priceOf(hi, 'high');
+    const at = (L) => end - L * (end - start);
+    const chosen = items.fib?.level;
+    pl(end, C.fibDim, '0', 2);
+    pl(start, C.fibDim, '1', 2);
+    for (const L of PARAMS.find((q) => q.path === 'strategy.fib.level').choices) {
+      pl(at(L), L === chosen ? C.fib : `${C.fib}66`, String(L), L === chosen ? 0 : 2, L === chosen ? 2 : 1);
+    }
+    mark(lo, 'low', 'F1', C.fib);
+    mark(hi, 'high', 'F2', C.fib);
+  }
+  if (S.t.div) {
+    const [p, q] = [...S.t.div].sort((x, y) => x - y);
+    seg(tDivS, [{ time: T(p), value: priceOf(p, 'low') }, { time: T(q), value: priceOf(q, 'low') }]);
+    if (Number.isFinite(r[p]) && Number.isFinite(r[q])) seg(teacherRsiS, [{ time: T(p), value: r[p] }, { time: T(q), value: r[q] }]);
+    mark(p, 'low', 'D1', C.div);
+    mark(q, 'low', 'D2', C.div);
+  }
+  if (S.t.candle != null) mark(S.t.candle, 'low', items.candle?.pattern?.name || 'C', C.candle, 'square');
+
+  // کندلِ برخوردی که بات واگرایی و الگو را رویش می‌سنجد
+  const k = S.all?.final?.line.touchIdx;
+  if (k != null && (S.tool === 'div' || S.tool === 'candle')) mark(k, 'low', 'K', '#f8fafc', S.dir === 'long' ? 'arrowUp' : 'arrowDown');
+
+  // در حالِ رسم: نقطه‌های زده‌شده، پیش‌نمایشِ نقطه‌ی بعد و خطِ موقت
+  if (S.tool) {
+    const T0 = TOOLS[S.tool];
+    S.pend.forEach((i, n) => mark(i, T0.pts[n], `${T0.tag}${n + 1}`, T0.color));
+    const kind = T0.pts[S.pend.length];
+    if (S.hover != null && !S.pend.includes(S.hover)) {
+      mark(S.hover, kind, `${T0.tag}${T0.pts.length > 1 ? S.pend.length + 1 : ''}`, '#f8fafc');
+      if (S.pend.length === 1) {
+        const [a, b] = [[S.pend[0], T0.pts[0]], [S.hover, kind]].sort((x, y) => x[0] - y[0]);
+        seg(previewS, [{ time: T(a[0]), value: priceOf(...a) }, { time: T(b[0]), value: priceOf(...b) }]);
+      }
+    }
+  }
 }
 
 // ───────────────────────────── بارگذاری
@@ -562,11 +751,12 @@ function clearTeacher() {
 async function loadCoin(base) {
   $('loading').hidden = false;
   $('loading').textContent = 'در حالِ گرفتنِ کندل‌ها…';
-  clearTeacher();
+  clearTeacher(false);
   try {
     S.data = await api(`candles?base=${encodeURIComponent(base)}`);
     setData();
     recompute();
+    teacherRun();
     $('loading').hidden = true;
     try { localStorage.setItem('coin', base); } catch { /* اختیاری */ }
   } catch (e) {
@@ -607,21 +797,14 @@ async function main() {
       recompute();
     };
   }
-  const toggle = (mode) => () => {
-    if (S.pts.length === 2 || (S.draw && S.draw !== mode)) clearTeacher();
-    setDraw(S.draw === mode ? null : mode);
-  };
-  $('draw').onclick = toggle('line');
-  $('drawDiv').onclick = toggle('div');
-  for (const b of document.querySelectorAll('#nudge button')) b.onclick = () => nudge(Number(b.dataset.pt), Number(b.dataset.d));
-  $('clear').onclick = clearTeacher;
+  for (const b of $('mode').children) b.onclick = () => setMode(b.dataset.mode);
   $('save').onclick = save;
   $('revert').onclick = revert;
   tg.MainButton?.onClick(save);
   tg.enableClosingConfirmation?.();
 
   buildControls();
-  dirty();
+  setMode(new URLSearchParams(location.search).get('mode') === 'teacher' ? 'teacher' : 'bot');
   if (pick) await loadCoin(pick);
 }
 

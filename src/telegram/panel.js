@@ -21,7 +21,11 @@ import { utc } from '../format.js';
 const b = (text, data) => ({ text, callback_data: data });
 const HOME = b('🏠 خانه', 'nav:home');
 // Mini App ِ چارتِ زنده — فقط وقتی دامنه‌ی عمومی هست (WEBAPP_URL یا دامنه‌ی Railway)
-const liveBtn = (url) => (url ? [{ text: '📈 چارتِ زنده و تنظیمِ استراتژی', web_app: { url } }] : null);
+// دو صفحه: تحلیلِ بات با اسلایدرها، و چارتِ خالی برای تحلیلِ خودِ استاد
+const liveBtn = (url) => (url ? [
+  { text: '🤖 چارتِ زنده: تحلیلِ بات', web_app: { url: `${url}?mode=bot` } },
+  { text: '✍️ تحلیلِ استاد', web_app: { url: `${url}?mode=teacher` } },
+] : null);
 const pairs = (arr) => arr.reduce((rows, x, i) => (i % 2 ? rows[rows.length - 1].push(x) : rows.push([x]), rows), []);
 const check = (on) => (on ? '✓ ' : '');
 
@@ -153,7 +157,7 @@ export function strategy(s) {
   });
   return {
     text: strategyText(cfg) + '\n\nروی هر شرط بزن تا عددهایش را عوض کنی، روشن/خاموشش کنی یا الزامی‌اش کنی.'
-      + (s.webApp ? '\nیا با «چارتِ زنده» روی چارتِ واقعی تنظیمش کن و خطِ استاد را رسم کن.' : ''),
+      + (s.webApp ? '\nیا روی چارتِ واقعی: «تحلیلِ بات» با اسلایدرها، یا «تحلیلِ استاد» که خودت خط، فیبو، واگرایی و کندل را می‌کشی و همان استراتژی می‌شود.' : ''),
     buttons: [
       liveBtn(s.webApp),
       ...pairs(condBtns),

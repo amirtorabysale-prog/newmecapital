@@ -17,6 +17,10 @@
   </div>
   <div id="score" class="score">—</div>
 </header>
+<nav class="tabs" id="mode">
+  <button data-mode="bot" class="on">🤖 تحلیلِ بات</button>
+  <button data-mode="teacher">✍️ تحلیلِ استاد</button>
+</nav>
 
 <div id="charts">
   <div id="price"></div>
@@ -24,19 +28,10 @@
   <div id="loading" class="overlay">در حالِ گرفتنِ کندل‌ها…</div>
 </div>
 
-<div class="tools">
-  <button id="draw">✏️ رسمِ خطِ استاد</button>
-  <button id="drawDiv">〰️ رسمِ واگراییِ استاد</button>
-  <button id="clear" hidden>✖ پاک کردن</button>
-  <span id="hint" class="hint"></span>
-</div>
-<div class="tools nudge" id="nudge" hidden>
-  <span class="hint">جابه‌جایی:</span>
-  <span class="pt">A <button data-pt="0" data-d="-1">◀</button><button data-pt="0" data-d="1">▶</button></span>
-  <span class="pt">B <button data-pt="1" data-d="-1">◀</button><button data-pt="1" data-d="1">▶</button></span>
-</div>
-
-<section id="fit" class="card" hidden></section>
+<div class="tools" id="ttools" hidden></div>
+<div class="tools" id="thint" hidden><span id="hint" class="hint"></span></div>
+<div class="tools nudge" id="nudge" hidden></div>
+<section id="review" class="card review" hidden></section>
 <section id="chips" class="chips"></section>
 <section id="info" class="info"></section>
 

@@ -17,7 +17,9 @@
 import { atr, rsi, pivotLows } from './indicators.js';
 import { findDivergence, rsiNear } from './divergence.js';
 import { findTrendline, lineAt } from './trendline.js';
-import { paramByPath } from './params.js';
+import { paramByPath, getPath, setPath } from './params.js';
+import { PATTERNS } from './patterns.js';
+import { analyze, mirrorCandles } from './analyze.js';
 
 const P = 'strategy.trendline.';
 
@@ -297,4 +299,138 @@ export function fitDivergence(candles, strategy, a, b, k, short = false) {
     out.changes.push({ path, from: Z[path.split('.').at(-1)], to: v });
   }
   return out;
+}
+
+/**
+ * «فیبوی استاد»: استاد از کفِ موج تا سقفِ موج فیبو می‌کشد. بات خودش فیبو را از
+ * پایین‌ترین کفِ بعد از برخوردِ دوم تا سقفِ واکنش (highIdx ِ خط) می‌کشد و این
+ * با تنظیم عوض نمی‌شود؛ پس اول لنگرها مقایسه می‌شوند، بعد سطحی که خط در کندلِ
+ * برخورد رویش نشسته و تحملِ لازم.
+ *
+ * @param bot { line, lowIdx, highIdx, k } از تحلیلِ بات (فضای قرینه برای فروش)
+ * @param level سطحی که استاد انتخاب کرده؛ خالی ← نزدیک‌ترین گزینه‌ی پنل
+ */
+export function fitFib(candles, strategy, bot, lo, hi, level = null) {
+  const F = strategy.fib;
+  const A = atr(candles, strategy.atrPeriod).at(-1);
+  const reasons = [];
+  const out = { ok: false, reasons, changes: [], level: null, retrace: null, distAtr: null, lowIdx: bot.lowIdx, highIdx: bot.highIdx };
+  if (candles[hi].h <= candles[lo].l || hi <= lo) {
+    reasons.push('سقفِ موج باید بعد از کفِ موج و بالاتر از آن باشد.');
+    return out;
+  }
+  if (Math.abs(lo - bot.lowIdx) > 2 || Math.abs(hi - bot.highIdx) > 2) {
+    reasons.push(`بات فیبو را از پایین‌ترین کفِ بعد از برخوردِ دوم تا سقفِ واکنش می‌کشد (کندلِ ${bot.lowIdx} تا ${bot.highIdx})؛ این با تنظیمات عوض نمی‌شود.`);
+  }
+  const start = candles[bot.lowIdx].l;
+  const end = candles[bot.highIdx].h;
+  const y = lineAt(bot.line, bot.k);
+  const retrace = (end - y) / (end - start);
+  const choices = paramByPath('strategy.fib.level').choices;
+  const distTo = (lv) => Math.abs(end - lv * (end - start) - y) / A;
+  // سطحِ فعلی اگر همین حالا امتیازِ کامل می‌گیرد دست نمی‌خورد؛ وگرنه نزدیک‌ترین گزینه
+  const L = level ?? (distTo(F.level) <= F.toleranceAtr ? F.level
+    : choices.reduce((best, c) => (Math.abs(c - retrace) < Math.abs(best - retrace) ? c : best), choices[0]));
+  const dist = distTo(L);
+  Object.assign(out, { level: L, retrace, distAtr: dist });
+  if (reasons.length) return out;
+
+  const tolPath = 'strategy.fib.toleranceAtr';
+  const nearPath = 'strategy.fib.nearToleranceAtr';
+  const tol = Math.max(F.toleranceAtr, ceilTo(dist, tolPath));
+  if (tol > paramByPath(tolPath).max) {
+    reasons.push(`خط در کندلِ برخورد روی سطحِ ${retrace.toFixed(3)} است؛ تا سطحِ ${L} ${dist.toFixed(2)} ATR فاصله دارد.`);
+    return out;
+  }
+  if (L !== F.level) out.changes.push({ path: 'strategy.fib.level', from: F.level, to: L });
+  if (tol !== F.toleranceAtr) out.changes.push({ path: tolPath, from: F.toleranceAtr, to: tol });
+  if (F.nearToleranceAtr < tol) out.changes.push({ path: nearPath, from: F.nearToleranceAtr, to: tol });
+  out.ok = true;
+  return out;
+}
+
+/**
+ * «کندلِ برگشتیِ استاد»: استاد کندلِ آخرِ الگو را می‌زند. بات الگو را فقط وقتی
+ * قیمت روی خط است و روی `candles.window` کندلِ آخر می‌سنجد.
+ */
+export function fitCandle(candles, strategy, i, state, short = false) {
+  const reasons = [];
+  const out = { ok: false, reasons, changes: [], pattern: null };
+  const A = atr(candles, strategy.atrPeriod).at(-1);
+  const found = PATTERNS.filter((p) => p.test(candles, i, A)).sort((x, y) => y.strength - x.strength)[0];
+  const faName = (p) => (short ? p.faBear : p.fa);
+  if (!found) {
+    reasons.push(`این کندل با هیچ‌کدام از الگوهای بات جور نیست (${PATTERNS.map(faName).join('، ')}).`);
+    return out;
+  }
+  out.pattern = { key: found.key, fa: faName(found), name: short ? found.bearName : found.name, strength: found.strength };
+  if (state !== 'touch') reasons.push('قیمت الان روی خط نیست؛ بات الگوی کندلی را فقط وقتی قیمت روی خط است می‌سنجد.');
+  const path = 'strategy.candles.window';
+  const need = candles.length - i;
+  if (need > paramByPath(path).max) reasons.push(`این کندل ${need} کندل قبل است؛ بات حداکثر ${paramByPath(path).max} کندلِ آخر را می‌بیند.`);
+  if (reasons.length) return out;
+  if (need > strategy.candles.window) out.changes.push({ path, from: strategy.candles.window, to: need });
+  out.ok = true;
+  return out;
+}
+
+/**
+ * تحلیلِ کاملِ استاد ← یک استراتژی. خط اول (بقیه به خط و کندلِ برخوردش
+ * وابسته‌اند)، بعد فیبو، واگرایی و کندل، هر کدام روی تنظیمِ مرحله‌ی قبل. هر
+ * شرطی که استاد کشیده و خاموش است روشن می‌شود. آخر سر تحلیلِ بات با تنظیمِ
+ * نهایی اجرا می‌شود تا معلوم شود واقعاً همان را می‌بیند.
+ *
+ * @param drawings { line?: [a,b], fib?: [lo,hi], div?: [p,q], candle?: i, fibLevel?: number }
+ * @returns {{ items: object, changes: {path,from,to}[], final: object|null, cfg: object }}
+ */
+export function fitAll(candles, cfg, direction, drawings, ltf = null) {
+  const short = direction === 'short';
+  const src = short ? mirrorCandles(candles) : candles;
+  const next = structuredClone(cfg);
+  const changes = new Map();
+  const apply = (list) => {
+    for (const c of list) {
+      setPath(next, c.path, c.to);
+      changes.set(c.path, { path: c.path, from: getPath(cfg, c.path), to: c.to });
+    }
+  };
+  const enable = (key) => {
+    const path = `strategy.conditions.${key}.enabled`;
+    return getPath(next, path) ? [] : [{ path, from: false, to: true }];
+  };
+  const items = {};
+  const needLine = { ok: false, reasons: ['اول خطِ روند را بکش و درست کن؛ این یکی به خط وابسته است.'], changes: [] };
+
+  let res = null;
+  if (drawings.line) {
+    items.line = fitLine(src, next.strategy, ...drawings.line);
+    if (items.line.ok) {
+      apply(items.line.changes);
+      res = analyze(candles, next, direction, ltf);
+    }
+  }
+  // تحلیلِ بات در فضای قرینه برای فروش، تا اندیس و قیمت‌ها با src بخوانند
+  const bot = res && analyze(src, next, 'long', ltf && (short ? mirrorCandles(ltf) : ltf));
+
+  if (drawings.fib) {
+    items.fib = bot ? fitFib(src, next.strategy, { line: bot.line, lowIdx: bot.fib.lowIdx, highIdx: bot.fib.highIdx, k: bot.line.touchIdx }, ...drawings.fib, drawings.fibLevel ?? null) : needLine;
+    if (items.fib.ok) apply([...items.fib.changes, ...enable('fib')]);
+  }
+  if (drawings.div) {
+    items.div = bot ? fitDivergence(src, next.strategy, ...drawings.div, bot.line.touchIdx, short) : needLine;
+    if (items.div.ok) apply([...items.div.changes, ...enable('divergence')]);
+  }
+  if (drawings.candle != null) {
+    items.candle = bot ? fitCandle(src, next.strategy, drawings.candle, bot.line.state, short) : needLine;
+    if (items.candle.ok) apply([...items.candle.changes, ...enable('candle')]);
+  }
+
+  const final = items.line?.ok ? analyze(candles, next, direction, ltf) : null;
+  // بات با تنظیمِ نهایی دقیقاً همان را می‌بیند؟
+  if (final) {
+    if (items.div?.ok && final.div?.p !== items.div.p) Object.assign(items.div, { ok: false, reasons: ['با تنظیمِ نهایی بات کفِ قبلیِ دیگری برای واگرایی برمی‌دارد.'] });
+    if (items.fib?.ok && !final.components.fib?.ok) Object.assign(items.fib, { ok: false, reasons: ['با تنظیمِ نهایی فیبو امتیازِ کامل نمی‌گیرد.'] });
+    if (items.candle?.ok && !final.candle) Object.assign(items.candle, { ok: false, reasons: ['با تنظیمِ نهایی بات الگوی کندلی نمی‌بیند.'] });
+  }
+  return { items, changes: [...changes.values()].filter((c) => JSON.stringify(c.from) !== JSON.stringify(c.to)), final, cfg: next };
 }

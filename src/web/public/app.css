@@ -38,6 +38,22 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: tr
 
 .tools { display: flex; gap: 8px; align-items: center; padding: 8px 12px; flex-wrap: wrap; }
 .tools button.on { background: var(--teacher); color: #111; }
+.tools button .st { margin-inline-start: 4px; }
+.tabs { display: flex; gap: 0; padding: 0 12px 8px; }
+.tabs button { flex: 1; border-radius: 0; }
+.tabs button:first-child { border-radius: 0 8px 8px 0; }
+.tabs button:last-child { border-radius: 8px 0 0 8px; }
+.review .item { padding: 6px 0; border-top: 1px solid #ffffff0d; }
+.review .item:first-of-type { border-top: 0; }
+.review .item h4 { margin: 0; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.review .item h4 .acts { display: flex; gap: 4px; }
+.review .item h4 .acts button { padding: 2px 8px; font-size: 12px; }
+.review .item p, .review .item ul { margin: 4px 0 0; font-size: 12px; }
+.review .levels { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; direction: ltr; }
+.review .levels button { padding: 2px 8px; font-size: 12px; }
+.review .total { margin-top: 8px; padding-top: 8px; border-top: 1px solid #ffffff1a; }
+.review .warn { color: var(--half); font-size: 12px; }
+.review .confirm { width: 100%; margin-top: 8px; padding: 10px; font-weight: 700; }
 .hint { color: var(--muted); font-size: 12px; }
 .nudge { padding-top: 0; }
 .nudge .pt { display: inline-flex; gap: 2px; align-items: center; direction: ltr; font-weight: 700; color: var(--teacher); }

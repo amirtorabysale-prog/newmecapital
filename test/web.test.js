@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { verifyInitData, webAppUrl } from '../src/web/server.js';
-import { fitLine, fitDivergence, snapLow } from '../src/strategy/fit.js';
+import { fitLine, fitDivergence, fitAll, snapLow } from '../src/strategy/fit.js';
 import { findDivergence } from '../src/strategy/divergence.js';
 import { atr, rsi } from '../src/strategy/indicators.js';
 import { findTrendline, lineAt } from '../src/strategy/trendline.js';
@@ -172,4 +172,35 @@ test('واگراییِ استاد: هر پیشنهاد را اعمال کنی، 
       assert.equal(findDivergence(c, r, k, { ...s.divergence, zone })?.p, p, `p=${p}`);
     }
   }
+});
+
+// استراتژیِ کاملِ پیش‌فرض برای fitAll (analyze همه‌ی بخش‌ها را می‌خواهد)
+const { readFileSync } = await import('node:fs');
+const DEF = JSON.parse(readFileSync(new URL('../config/default.json', import.meta.url), 'utf8'));
+
+test('تحلیلِ استاد: تحلیلِ خودِ بات را بکشی ← بدونِ تغییر پذیرفته می‌شود', async () => {
+  const { analyze } = await import('../src/strategy/analyze.js');
+  const c = series();
+  const cfg = { strategy: structuredClone(DEF.strategy) };
+  const res = analyze(c, cfg, 'long');
+  assert.ok(res, 'بات روی داده‌ی آزمایشی خط پیدا نکرد');
+  const f = fitAll(c, cfg, 'long', { line: [res.line.a, res.line.b], fib: [res.fib.lowIdx, res.fib.highIdx], fibLevel: cfg.strategy.fib.level });
+  assert.ok(f.items.line.ok, f.items.line.reasons.join(' | '));
+  // تحمل فقط بالا می‌رود، پس امتیاز کمتر نمی‌شود
+  assert.ok(f.final.score >= res.score, `${f.final.score} < ${res.score}`);
+  // فیبو با سطحِ فعلی: یا بی‌تغییر می‌پذیرد یا فقط تحمل را بالا می‌برد
+  for (const x of f.changes) assert.match(x.path, /^strategy\.fib\.(toleranceAtr|nearToleranceAtr)$/);
+});
+
+test('تحلیلِ استاد: بدونِ خط، بقیه منتظرِ خط‌اند؛ فیبوی جابه‌جا ← توضیح', () => {
+  const c = series();
+  const cfg = { strategy: structuredClone(DEF.strategy) };
+  const [a, b] = c.pivots;
+  let f = fitAll(c, cfg, 'long', { div: [a, b], candle: c.length - 1 });
+  assert.equal(f.items.div.ok, false);
+  assert.match(f.items.div.reasons[0], /خطِ روند/);
+  assert.equal(f.final, null);
+  f = fitAll(c, cfg, 'long', { line: [a, b], fib: [a, a + 20] });
+  assert.equal(f.items.fib.ok, false);
+  assert.match(f.items.fib.reasons[0], /بات فیبو را/);
 });
