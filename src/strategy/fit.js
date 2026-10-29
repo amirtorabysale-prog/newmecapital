@@ -23,6 +23,9 @@ import { analyze, mirrorCandles } from './analyze.js';
 
 const P = 'strategy.trendline.';
 
+/** زمانِ کندل برای پیام‌ها — شماره‌ی کندل برای استاد معنایی ندارد */
+export const when = (candles, i) => (candles[i] ? `${new Date(candles[i].t).toISOString().slice(5, 16).replace('T', ' ')} UTC` : '?');
+
 /** کفِ نزدیکِ کلیکِ استاد: پایین‌ترین low در ±radius کندل */
 export function snapLow(candles, i, radius = 3) {
   let best = Math.max(0, Math.min(candles.length - 1, i));
@@ -110,7 +113,14 @@ export function fitLine(candles, strategy, a, b) {
   if (want.lookback > lim(`${P}lookback`).max) reasons.push(`کفِ اول خیلی قدیمی است (${need.lookbackMin} کندل پیش؛ بیشینه ${lim(`${P}lookback`).max}).`);
   if (want.breakToleranceAtr > lim(`${P}breakToleranceAtr`).max) reasons.push(`کندلی ${closeBelow.toFixed(2)} ATR زیرِ خط بسته شده؛ خط شکسته است.`);
   if (want.maxWickPierceAtr > lim(`${P}maxWickPierceAtr`).max) reasons.push(`سایه‌ای ${wickBelow.toFixed(2)} ATR از خط رد شده.`);
-  if (reasons.length) return out;
+  if (reasons.length) {
+    // نقطه روی کفِ واقعی نیست: کفِ چرخشیِ همان نزدیکی را پیشنهاد بده
+    if (maxS < lim(`${P}pivotStrength`).min) {
+      const [sa, sb] = [snapLow(candles, a), snapLow(candles, b)];
+      if ((sa !== a || sb !== b) && sa !== sb) out.fix = { to: [sa, sb], why: `کفِ واقعیِ آن نزدیکی: ${when(candles, sa)} و ${when(candles, sb)}` };
+    }
+    return out;
+  }
 
   // ── ۲. اجرای واقعی؛ اگر خطِ دیگری جلو افتاد، سخت‌گیرتر
   // «همان خط» یعنی از هر دو کفِ استاد رد شود (با همان تحملِ برخوردهای اضافه)،
@@ -148,6 +158,7 @@ export function fitLine(candles, strategy, a, b) {
   if (!best) {
     out.rival = rival;
     reasons.push('با هر تنظیمی خطِ دیگری از این بهتر رتبه می‌گیرد (به قیمت نزدیک‌تر است یا برخوردِ بیشتری دارد).');
+    if (rival) out.fix = { to: [rival.a, rival.b], why: `بات این خط را می‌بیند: ${when(candles, rival.a)} تا ${when(candles, rival.b)} (خط‌چینِ خاکستری)` };
     return out;
   }
   out.ok = true;
@@ -182,7 +193,8 @@ export function fitDivergence(candles, strategy, a, b, k, short = false) {
     return out;
   }
   if (Math.abs(b - k) > 2) {
-    reasons.push(`بات واگرایی را روی کندلِ برخورد به خط می‌سنجد؛ کفِ دومِ تو ${Math.abs(b - k)} کندل با آن فاصله دارد. کفِ دوم را روی برخورد بزن.`);
+    reasons.push(`بات واگرایی را روی کندلِ برخورد به خط می‌سنجد (${when(candles, k)}، K روی چارت)؛ کفِ دومِ تو ${Math.abs(b - k)} کندل با آن فاصله دارد.`);
+    if (a < k) out.fix = { to: [a, k], why: `کفِ دوم روی کندلِ برخورد (${when(candles, k)})` };
     return out;
   }
   const p = a;
@@ -320,7 +332,9 @@ export function fitFib(candles, strategy, bot, lo, hi, level = null) {
     return out;
   }
   if (Math.abs(lo - bot.lowIdx) > 2 || Math.abs(hi - bot.highIdx) > 2) {
-    reasons.push(`بات فیبو را از پایین‌ترین کفِ بعد از برخوردِ دوم تا سقفِ واکنش می‌کشد (کندلِ ${bot.lowIdx} تا ${bot.highIdx})؛ این با تنظیمات عوض نمی‌شود.`);
+    reasons.push(`بات فیبو را فقط از پایین‌ترین کفِ بعد از برخوردِ دوم تا سقفِ واکنش می‌کشد: ${when(candles, bot.lowIdx)} تا ${when(candles, bot.highIdx)}. فیبوی تو از ${when(candles, lo)} تا ${when(candles, hi)} است و این با هیچ تنظیمی عوض نمی‌شود.`);
+    out.fix = { to: [bot.lowIdx, bot.highIdx], why: `فیبوی بات: ${when(candles, bot.lowIdx)} تا ${when(candles, bot.highIdx)} (خط‌چینِ خاکستری)` };
+    out.freeHint = true;
   }
   const start = candles[bot.lowIdx].l;
   const end = candles[bot.highIdx].h;
@@ -361,6 +375,12 @@ export function fitCandle(candles, strategy, i, state, short = false) {
   const faName = (p) => (short ? p.faBear : p.fa);
   if (!found) {
     reasons.push(`این کندل با هیچ‌کدام از الگوهای بات جور نیست (${PATTERNS.map(faName).join('، ')}).`);
+    // نزدیک‌ترین کندلی (±۳) که یکی از الگوها را دارد
+    for (const d of [1, -1, 2, -2, 3, -3]) {
+      const j = i + d;
+      const p = j >= 0 && j < candles.length && PATTERNS.find((q) => q.test(candles, j, A));
+      if (p) { out.fix = { to: j, why: `${faName(p)} در ${when(candles, j)}` }; break; }
+    }
     return out;
   }
   out.pattern = { key: found.key, fa: faName(found), name: short ? found.bearName : found.name, strength: found.strength };

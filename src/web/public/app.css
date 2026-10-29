@@ -96,3 +96,24 @@ summary .st { font-weight: 400; color: var(--muted); font-size: 12px; }
 .savebar { position: fixed; bottom: 0; inset-inline: 0; display: flex; gap: 8px; align-items: center; padding: 10px 12px; background: var(--bg2); border-top: 1px solid #ffffff1a; z-index: 6; }
 .savebar span { flex: 1; font-size: 13px; }
 .toast { position: fixed; bottom: 70px; inset-inline: 16px; padding: 10px 12px; border-radius: 10px; background: #000d; color: #fff; z-index: 7; text-align: center; }
+
+/* ❌ ِ تحلیلِ استاد: مشکل، چیزی که بات می‌خواهد، و دکمه‌ی درست کردن */
+.review .why ul { margin: 2px 0 0; }
+.review .want { margin-top: 6px; font-size: 12px; color: #cbd5e1; }
+.review .fix { margin-top: 6px; font-size: 12px; border-color: #94a3b8; }
+.review .tofree { width: 100%; margin-top: 8px; border: 1px dashed #ffffff33; }
+
+/* رسمِ آزاد */
+.card.flist, .card.fsum { border-right-color: #38bdf8; }
+.flist .item { padding: 6px 0; border-top: 1px solid #ffffff0d; }
+.flist .item:first-of-type { border-top: 0; }
+.flist .item.sel h4 { color: #38bdf8; }
+.flist h4 { margin: 0; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; align-items: center; cursor: pointer; }
+.flist h4 .acts { display: flex; gap: 4px; }
+.flist h4 .acts button { padding: 2px 8px; font-size: 12px; }
+.flist p { margin: 2px 0 0; }
+.flist .levels { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; direction: ltr; }
+.flist .levels button { padding: 2px 8px; font-size: 12px; }
+.fsum ul { font-size: 12px; }
+.fsum .warn { color: var(--half); font-size: 12px; }
+#ftools button.on { background: #38bdf8; color: #111; }

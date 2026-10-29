@@ -21,11 +21,12 @@ import { utc } from '../format.js';
 const b = (text, data) => ({ text, callback_data: data });
 const HOME = b('🏠 خانه', 'nav:home');
 // Mini App ِ چارتِ زنده — فقط وقتی دامنه‌ی عمومی هست (WEBAPP_URL یا دامنه‌ی Railway)
-// دو صفحه: تحلیلِ بات با اسلایدرها، و چارتِ خالی برای تحلیلِ خودِ استاد
+// سه صفحه: تحلیلِ بات با اسلایدرها، تحلیلِ استاد ← استراتژی، و رسمِ آزاد که بات فقط تماشایش می‌کند
 const liveBtn = (url) => (url ? [
   { text: '🤖 چارتِ زنده: تحلیلِ بات', web_app: { url: `${url}?mode=bot` } },
   { text: '✍️ تحلیلِ استاد', web_app: { url: `${url}?mode=teacher` } },
 ] : null);
+const freeBtn = (url) => (url ? [{ text: '📌 رسمِ آزاد (بات تماشا می‌کند)', web_app: { url: `${url}?mode=free` } }] : null);
 const pairs = (arr) => arr.reduce((rows, x, i) => (i % 2 ? rows[rows.length - 1].push(x) : rows.push([x]), rows), []);
 const check = (on) => (on ? '✓ ' : '');
 
@@ -49,6 +50,7 @@ export function home(s) {
       [b('📈 کارنامه‌ی سیگنال‌ها', 'nav:perf')],
       [b('🧠 استراتژی', 'nav:st'), b('⚙️ تنظیمات', 'nav:set')],
       liveBtn(s.webApp),
+      freeBtn(s.webApp),
       [b(`🔔 در انتظارِ تأیید (${pending})`, 'nav:pend'), b('👥 ادمین‌ها', 'nav:adm')],
     ].filter(Boolean),
   };
@@ -160,6 +162,7 @@ export function strategy(s) {
       + (s.webApp ? '\nیا روی چارتِ واقعی: «تحلیلِ بات» با اسلایدرها، یا «تحلیلِ استاد» که خودت خط، فیبو، واگرایی و کندل را می‌کشی و همان استراتژی می‌شود.' : ''),
     buttons: [
       liveBtn(s.webApp),
+      freeBtn(s.webApp),
       ...pairs(condBtns),
       [b('📐 پلنِ معامله', 'nav:grp:plan'), b('🎯 آستانه و هشدار', 'nav:grp:general')],
       [b('♻️ همه به پیش‌فرض', 'act:reset?')],

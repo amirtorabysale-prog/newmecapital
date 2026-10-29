@@ -5,6 +5,9 @@
  *                    دوباره. «ذخیره» از اسکنِ بعدی اعمال می‌شود.
  *   ✍️ تحلیلِ استاد — چارتِ خالی و ابزارِ رسمِ خط، فیبو، واگرایی و کندل. fitAll
  *                    تنظیمی را پیدا می‌کند که بات همان را ببیند؛ «تأیید» ذخیره‌اش می‌کند.
+ *                    هر ❌ می‌گوید بات چه می‌خواهد و اگر بشود دکمه‌ی «درستش کن» دارد.
+ *   📌 رسمِ آزاد   — هر خطی، هر جا؛ هیچ چیز رد نمی‌شود. رسم‌ها برای همان ارز روی
+ *                    سرور ذخیره و بات تماشایشان می‌کند (src/strategy/watch.js).
  */
 
 import { analyze } from './strategy/analyze.js';
@@ -13,6 +16,7 @@ import { rsi, ema } from './strategy/indicators.js';
 import { PARAMS, CONDITIONS, getPath, setPath, coerce, formatValue } from './strategy/params.js';
 import { fitAll } from './strategy/fit.js';
 import { Overlay, RsiBands } from './overlay.js';
+import { KINDS, WATCH_FIB, DEFAULT_FIB_WATCH, trendAt, fibAt, levelsAt, features, summarize, timeToLogical, logicalToTime } from './strategy/watch.js';
 
 const tg = window.Telegram?.WebApp;
 tg?.ready();
@@ -57,6 +61,10 @@ const S = {
   // کندلی که اگر الان بزنی انتخاب می‌شود (پیش‌نمایش)
   hover: null,
   all: null,
+  // ── رسمِ آزاد: { list, tool, pend: [{t,p}], hover: {t,p}, sel }
+  free: { list: [], tool: null, pend: [], hover: null, sel: null },
+  // رسم‌های همه‌ی ارزها، برای خلاصه
+  coins: {},
 };
 
 // ───────────────────────────── API
@@ -306,6 +314,7 @@ function draw() {
   }
 
   if (S.mode === 'teacher') drawTeacher(markers, shapes, rsiShapes, r);
+  if (S.mode === 'free') drawFree(markers, shapes);
 
   overlay.set(shapes);
   rsiOverlay.set(rsiShapes);
@@ -488,17 +497,19 @@ function revert() {
   recompute();
 }
 
-// ───────────────────────────── دو صفحه
+// ───────────────────────────── سه صفحه
 
 function setMode(mode) {
   S.mode = mode;
   for (const b of $('mode').children) b.classList.toggle('on', b.dataset.mode === mode);
   const bot = mode === 'bot';
   for (const id of ['chips', 'info', 'controls']) $(id).hidden = !bot;
-  for (const id of ['ttools', 'thint']) $(id).hidden = bot;
+  for (const id of ['ttools', 'thint']) $(id).hidden = mode !== 'teacher';
+  for (const id of ['ftools', 'fhint', 'flist', 'fsum']) $(id).hidden = mode !== 'free';
   S.tool = null;
   S.pend = [];
   S.hover = null;
+  Object.assign(S.free, { tool: null, pend: [], hover: null });
   try {
     const u = new URL(location.href);
     u.searchParams.set('mode', mode);
@@ -506,10 +517,12 @@ function setMode(mode) {
   } catch { /* اختیاری */ }
   renderTools();
   renderReview();
+  renderFree();
   dirty();
   draw();
   if (bot) summary();
-  else teacherScore();
+  else if (mode === 'teacher') teacherScore();
+  else freeScore();
 }
 
 // ───────────────────────────── تحلیلِ استاد
@@ -584,6 +597,7 @@ function pickAt(point, kind, paneIndex = 0) {
 
 chart.subscribeCrosshairMove((param) => {
   legend(param.logical == null ? null : Math.round(param.logical));
+  if (S.mode === 'free') return freeHover(param);
   if (S.mode !== 'teacher' || !S.tool) return;
   const j = pickAt(param.point, TOOLS[S.tool].pts[S.pend.length], param.paneIndex);
   if (j === S.hover) return;
@@ -592,6 +606,7 @@ chart.subscribeCrosshairMove((param) => {
 });
 
 chart.subscribeClick((param) => {
+  if (S.mode === 'free') return freeClick(param);
   if (S.mode !== 'teacher' || !S.tool || !S.data) return;
   const kinds = TOOLS[S.tool].pts;
   const i = pickAt(param.point, kinds[S.pend.length], param.paneIndex);
@@ -714,7 +729,17 @@ function renderReview() {
     const item = el('div', { class: 'item' }, head);
     const d = detail[key](f);
     if (d) item.append(el('p', { class: 'hint' }, d));
-    if (!f.ok && f.reasons.length) item.append(el('ul', {}, f.reasons.map((r) => el('li', {}, r))));
+    if (!f.ok && f.reasons.length) {
+      item.append(el('div', { class: 'why' }, el('b', {}, 'مشکل: '), el('ul', {}, f.reasons.map((r) => el('li', {}, r)))));
+      // بات چه می‌خواهد، و اگر بشود یک دکمه که رسم را همان‌جا بگذارد
+      if (f.fix) {
+        item.append(el('div', { class: 'want' }, el('b', {}, 'بات این را می‌خواهد: '), f.fix.why),
+          el('button', { class: 'fix', onclick: () => applyFix(key, f.fix.to) }, '🔧 بگذار همان‌جا که بات می‌خواهد'));
+      }
+      if (f.freeHint || !f.fix) {
+        item.append(el('p', { class: 'hint' }, 'اگر تحلیلت همین است و نمی‌خواهی جابه‌جایش کنی، در «📌 رسمِ آزاد» بکش؛ آن‌جا هیچ رسمی رد نمی‌شود و بات همان را تماشا می‌کند.'));
+      }
+    }
     if (key === 'fib' && f.level != null) {
       // استاد می‌تواند بگوید منظورش کدام سطح بود
       item.append(el('div', { class: 'levels' }, PARAMS.find((q) => q.path === 'strategy.fib.level').choices.map((c) => el('button', {
@@ -742,6 +767,9 @@ function renderReview() {
     // امتیاز فقط وقتی قیمت به خط رسیده معنا دارد
     if (A.final.line.state === 'far') total.append(el('p', { class: 'hint' }, `قیمت الان ${A.final.line.distAtr.toFixed(1)} ATR از خط دور است؛ امتیاز وقتی قیمت به خط برسد حساب می‌شود.`));
   }
+  if (['line', 'fib'].some((k) => A.items[k] && !A.items[k].ok)) {
+    total.append(el('button', { class: 'ghost tofree', onclick: () => toFree() }, '📌 همین خط و فیبو را ببر به «رسمِ آزاد»'));
+  }
   if (Object.values(A.items).some((f) => !f.ok)) {
     total.append(el('p', { class: 'warn' }, A.changes.length ? 'موردهای ❌ در استراتژی نمی‌آیند؛ «تأیید» فقط موردهای ✅ را ذخیره می‌کند.' : 'موردهای ❌ را درست کن یا پاک کن.'));
   }
@@ -762,6 +790,28 @@ function renderReview() {
   }
   kids.push(total);
   box.replaceChildren(...kids);
+}
+
+/** «درستش کن»: رسمِ استاد را همان‌جا بگذار که بات انتظار دارد و دوباره بسنج */
+function applyFix(key, to) {
+  S.t[key] = Array.isArray(to) ? [...to] : to;
+  S.last = key;
+  tg?.HapticFeedback?.selectionChanged();
+  teacherRun();
+}
+
+/** خط و فیبوی این صفحه ← رسمِ آزاد (با زمان و قیمتِ واقعی) */
+function toFree() {
+  const cs = S.data.candles;
+  const pt = (i, kind) => ({ t: cs[i].t, p: priceOf(i, kind) });
+  const added = [];
+  if (S.t.line) added.push(newDrawing('trend', [...S.t.line].sort((a, b) => a - b).map((i) => pt(i, 'low'))));
+  if (S.t.fib) added.push(newDrawing('fib', [pt(S.t.fib[0], 'low'), pt(S.t.fib[1], 'high')]));
+  if (!added.length) return;
+  S.free.list.push(...added);
+  saveFree();
+  setMode('free');
+  toast(`📌 ${added.length} رسم به «رسمِ آزاد» رفت؛ بات تماشایش می‌کند.`, 3500);
 }
 
 async function confirmTeacher() {
@@ -827,6 +877,19 @@ function drawTeacher(markers, shapes, rsiShapes, r) {
   }
   if (S.t.candle != null) mark(S.t.candle, 'low', items.candle?.pattern?.name || 'C', C.candle, 'square');
 
+  // جایی که بات انتظار دارد (برای موردهای ❌ با پیشنهاد): خط‌چینِ خاکستری
+  for (const [key, f] of Object.entries(items)) {
+    if (f.ok || !f.fix) continue;
+    const ghost = '#94a3b8';
+    const kinds = TOOLS[key].pts;
+    const to = Array.isArray(f.fix.to) ? f.fix.to : [f.fix.to];
+    to.forEach((i, n) => mark(i, kinds[n] || 'low', `B${to.length > 1 ? n + 1 : ''}`, ghost, 'square'));
+    if (to.length === 2) {
+      const [a, b] = to.map((i, n) => [i, priceOf(i, kinds[n])]);
+      shapes.push({ kind: 'seg', a, b, color: ghost, width: 1.5, dash: [6, 4], ray: key === 'line' });
+    }
+  }
+
   // کندلِ برخوردی که بات واگرایی و الگو را رویش می‌سنجد
   const k = S.all?.final?.line.touchIdx;
   if (k != null && (S.tool === 'div' || S.tool === 'candle')) mark(k, 'low', 'K', '#f8fafc', S.dir === 'long' ? 'arrowUp' : 'arrowDown');
@@ -846,17 +909,235 @@ function drawTeacher(markers, shapes, rsiShapes, r) {
   }
 }
 
+// ───────────────────────────── رسمِ آزاد
+
+const FREE = {
+  trend: { icon: '📏', color: '#f59e0b', hint: ['نقطه‌ی اولِ خط را بزن — هر جا، حتی بینِ کندل‌ها.', 'حالا نقطه‌ی دوم.'] },
+  hline: { icon: '➖', color: '#38bdf8', hint: ['روی قیمتِ سطح بزن.'] },
+  fib: { icon: '🌀', color: '#2dd4bf', hint: ['شروعِ موج را بزن (سطحِ 1).', 'حالا انتهای موج (سطحِ 0).'] },
+};
+// آهنربا: نزدیک‌تر از این (پیکسل) به باز/سقف/کف/بسته‌ی کندل ← همان قیمت
+const MAGNET_PX = 12;
+
+const tfNow = () => tfMs(S.data?.timeframe);
+const xOf = (t) => timeToLogical(S.data.candles, t, tfNow());
+const fmtT = (t) => new Date(t).toISOString().slice(5, 16).replace('T', ' ');
+const fmtP = (p) => candleS.priceFormatter().format(p);
+
+function newDrawing(kind, points) {
+  const d = { id: Math.random().toString(36).slice(2, 10), kind, points, watch: true, createdAt: Date.now() };
+  if (kind === 'fib') d.levels = [...DEFAULT_FIB_WATCH];
+  try {
+    d.features = features(d, S.data.candles, savedCfg().strategy, tfNow(), S.free.list);
+  } catch { /* مشخصه‌ها اختیاری‌اند */ }
+  return d;
+}
+
+/** مختصاتِ انگشت ← { t, p }؛ روی pane ِ RSI قیمت نداریم */
+function freePoint(param) {
+  if (!S.data || !param.point || param.paneIndex) return null;
+  let x = param.logical ?? chart.timeScale().coordinateToLogical(param.point.x);
+  let p = candleS.coordinateToPrice(param.point.y);
+  if (x == null || p == null) return null;
+  const cs = S.data.candles;
+  const i = Math.round(x);
+  if (i >= 0 && i < cs.length) {
+    let best = null;
+    for (const v of [cs[i].o, cs[i].h, cs[i].l, cs[i].c]) {
+      const y = candleS.priceToCoordinate(v);
+      const d = y == null ? Infinity : Math.abs(y - param.point.y);
+      if (d < MAGNET_PX && (!best || d < best.d)) best = { v, d };
+    }
+    if (best) { x = i; p = best.v; }
+  }
+  return { t: Math.round(logicalToTime(cs, x, tfNow())), p };
+}
+
+// draw() داده‌ی سری‌ها را دوباره می‌گذارد و کتابخانه همان‌جا crosshairMove می‌فرستد؛
+// بی این دو شرط، پیش‌نمایش در حلقه‌ی بی‌پایان می‌افتاد
+let hovering = false;
+function freeHover(param) {
+  if (!S.free.tool || hovering) return;
+  const pt = freePoint(param);
+  const old = S.free.hover;
+  if (pt?.t === old?.t && pt?.p === old?.p) return;
+  S.free.hover = pt;
+  hovering = true;
+  try {
+    draw();
+  } finally {
+    hovering = false;
+  }
+}
+
+function freeClick(param) {
+  const F = S.free;
+  if (!F.tool) {
+    // بدونِ ابزار: نزدیک‌ترین رسم انتخاب می‌شود
+    F.sel = nearestDrawing(param)?.id ?? null;
+    renderFree();
+    draw();
+    return;
+  }
+  const pt = freePoint(param);
+  if (!pt) return;
+  F.pend.push(pt);
+  tg?.HapticFeedback?.selectionChanged();
+  if (F.pend.length === KINDS[F.tool].pts) {
+    if (F.tool === 'trend' && F.pend[0].t === F.pend[1].t) {
+      F.pend.pop();
+      toast('دو نقطه‌ی خط باید در دو زمانِ مختلف باشند.');
+      return;
+    }
+    const d = newDrawing(F.tool, F.pend);
+    F.list.push(d);
+    F.sel = d.id;
+    F.tool = null;
+    F.pend = [];
+    F.hover = null;
+    saveFree();
+  }
+  renderFree();
+  draw();
+}
+
+function nearestDrawing(param) {
+  if (!param.point || param.paneIndex || !S.data) return null;
+  const t = logicalToTime(S.data.candles, param.logical ?? 0, tfNow());
+  let best = null;
+  for (const d of S.free.list) {
+    const prices = d.kind === 'trend' ? [trendAt(d, t)] : d.kind === 'hline' ? [d.points[0].p] : [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1].map((L) => fibAt(d, L));
+    for (const p of prices) {
+      const y = candleS.priceToCoordinate(p);
+      const dist = y == null ? Infinity : Math.abs(y - param.point.y);
+      if (dist < 16 && (!best || dist < best.dist)) best = { id: d.id, dist };
+    }
+  }
+  return best;
+}
+
+function drawFree(markers, shapes) {
+  const F = S.free;
+  const one = (d, preview = false) => {
+    const sel = d.id === F.sel;
+    const color = preview ? '#f8fafc' : FREE[d.kind].color;
+    // تماشای خاموش کم‌رنگ
+    const dim = d.watch ? '' : '88';
+    if (d.kind === 'trend') {
+      const [a, b] = d.points.map((p) => [xOf(p.t), p.p]).sort((u, v) => u[0] - v[0]);
+      shapes.push({ kind: 'seg', a, b, color: `${color}${dim}`, width: sel ? 3 : 2, ray: !preview, dash: preview ? [5, 4] : [] });
+    } else if (d.kind === 'hline') {
+      shapes.push({ kind: 'seg', a: [0, d.points[0].p], b: [S.data.candles.length - 1 + RIGHT, d.points[0].p], color: `${color}${dim}`, width: sel ? 3 : 2 });
+    } else if (d.kind === 'fib') {
+      const [a, b] = d.points.map((p) => [xOf(p.t), p.p]);
+      shapes.push({ kind: 'fib', from: Math.min(a[0], b[0]), to: S.data.candles.length - 1 + RIGHT - 2, lo: a, hi: b, strong: preview ? [] : d.levels });
+    }
+    if (!preview) for (const p of d.points) shapes.push({ kind: 'dot', at: [xOf(p.t), p.p], color, r: sel ? 5 : 3.5 });
+  };
+  for (const d of F.list) one(d);
+  // در حالِ رسم: نقطه‌های زده‌شده و پیش‌نمایش
+  if (F.tool) {
+    const pts = [...F.pend, ...(F.hover ? [F.hover] : [])];
+    for (const p of pts) shapes.push({ kind: 'dot', at: [xOf(p.t), p.p], color: '#f8fafc', r: 3.5 });
+    if (pts.length === KINDS[F.tool].pts && !(F.tool === 'trend' && pts[0].t === pts[1].t)) one({ kind: F.tool, points: pts, watch: true, levels: [] }, true);
+  }
+}
+
+function renderFree() {
+  if (S.mode !== 'free') return;
+  const F = S.free;
+  $('ftools').replaceChildren(...Object.entries(KINDS).map(([k, K]) => el('button', {
+    class: F.tool === k ? 'on' : '',
+    onclick: () => { F.tool = F.tool === k ? null : k; F.pend = []; F.hover = null; renderFree(); draw(); },
+  }, `${FREE[k].icon} ${K.fa}`)));
+  $('fhinttext').textContent = F.tool ? FREE[F.tool].hint[F.pend.length]
+    : 'هر خطی که می‌خواهی بکش؛ هیچ چیز رد نمی‌شود. وقتی قیمت به آن برسد بات RSI، واگرایی و کندل را می‌سنجد و خبر می‌دهد. نزدیکِ قیمت‌های کندل، نقطه به آن می‌چسبد.';
+
+  const box = $('flist');
+  if (!F.list.length) {
+    box.replaceChildren(el('h3', {}, '📌 رسم‌های این ارز'), el('p', { class: 'hint' }, 'هنوز رسمی نیست.'));
+  } else {
+    const last = S.data?.candles.at(-1);
+    box.replaceChildren(el('h3', {}, `📌 رسم‌های این ارز (${F.list.length}) — بات تماشا می‌کند`), ...F.list.map((d, n) => {
+      const where = d.kind === 'hline' ? fmtP(d.points[0].p) : `${fmtT(d.points[0].t)} ← ${fmtT(d.points[1].t)}`;
+      // فاصله‌ی قیمتِ الان تا نزدیک‌ترین سطحِ تماشاشده
+      let dist = '';
+      const lv = last ? levelsAt(d, last.t) : [];
+      if (lv.length) {
+        const near = lv.reduce((a, b) => (Math.abs(b.price - last.c) < Math.abs(a.price - last.c) ? b : a));
+        dist = ` · تا ${near.label}: ${((near.price / last.c - 1) * 100).toFixed(2)}%`;
+      }
+      const redraw = () => { saveFree(); renderFree(); draw(); };
+      const row = el('div', { class: `item${d.id === F.sel ? ' sel' : ''}` },
+        el('h4', {}, el('span', { onclick: () => { F.sel = d.id; renderFree(); draw(); } }, `${FREE[d.kind].icon} ${KINDS[d.kind].fa} ${n + 1}`),
+          el('span', { class: 'acts' },
+            el('button', { title: 'تماشا', onclick: () => { d.watch = !d.watch; redraw(); } }, d.watch ? '🔔' : '🔕'),
+            el('button', { onclick: () => { F.list = F.list.filter((x) => x !== d); if (F.sel === d.id) F.sel = null; redraw(); } }, '✖'))),
+        el('p', { class: 'hint' }, `${where}${dist}${d.watch ? '' : ' · تماشا خاموش'}`));
+      if (d.kind === 'fib') {
+        row.append(el('div', { class: 'levels' }, WATCH_FIB.map((L) => el('button', {
+          class: d.levels.includes(L) ? 'on' : '',
+          onclick: () => {
+            d.levels = d.levels.includes(L) ? d.levels.filter((x) => x !== L) : [...d.levels, L].sort();
+            redraw();
+          },
+        }, String(L)))), el('p', { class: 'hint' }, 'سطح‌های روشن تماشا می‌شوند.'));
+      }
+      return row;
+    }));
+  }
+  renderFreeSummary();
+  freeScore();
+}
+
+function renderFreeSummary() {
+  const sum = summarize(S.coins);
+  const kids = [el('h3', {}, '📊 الگوی رسم‌های استاد'), el('p', { class: 'hint' }, `${sum.total} رسم روی ${sum.coins} ارز. وقتی رسم‌ها بیشتر شود، از این‌جا معلوم می‌شود اسکنِ خودکار چطور تنظیم شود.`)];
+  if (sum.notes.length) kids.push(el('ul', {}, sum.notes.map((t) => el('li', {}, t))));
+  if (sum.suggest === 'fibFromLine1') kids.push(el('p', { class: 'warn' }, '💡 بیشترِ فیبوهایت از برخوردِ اولِ خط شروع می‌شود، ولی بات فیبو را بعد از برخوردِ دوم می‌کشد. پیشنهاد: تنظیمِ «شروعِ فیبو» به اسکن اضافه شود.'));
+  $('fsum').replaceChildren(...kids);
+}
+
+function freeScore() {
+  if (S.mode !== 'free') return;
+  $('score').textContent = `${S.free.list.length} رسم`;
+  $('score').className = 'score';
+}
+
+let freeTimer = 0;
+function saveFree() {
+  const base = $('coin').value;
+  S.coins[base] = S.free.list;
+  clearTimeout(freeTimer);
+  freeTimer = setTimeout(async () => {
+    try {
+      const r = await api('drawings', { base, drawings: S.free.list });
+      // سرور شکلِ تمیزشده را برمی‌گرداند؛ فقط اگر هنوز همین ارز باز است
+      if ($('coin').value === base) {
+        S.free.list = r.drawings;
+        S.coins[base] = r.drawings;
+        renderFree();
+      }
+      toast('✅ ذخیره شد؛ بات تماشا می‌کند.', 1500);
+    } catch (e) {
+      toast(`❌ ذخیره نشد: ${e.message}`, 4000);
+    }
+  }, 400);
+}
+
 // ───────────────────────────── بارگذاری
 
 async function loadCoin(base) {
   $('loading').hidden = false;
   $('loading').textContent = 'در حالِ گرفتنِ کندل‌ها…';
   clearTeacher(false);
+  Object.assign(S.free, { list: structuredClone(S.coins[base] || []), tool: null, pend: [], hover: null, sel: null });
   try {
     S.data = await api(`candles?base=${encodeURIComponent(base)}`);
     setData();
     recompute();
     teacherRun();
+    renderFree();
     $('loading').hidden = true;
     try { localStorage.setItem('coin', base); } catch { /* اختیاری */ }
   } catch (e) {
@@ -870,7 +1151,8 @@ async function main() {
     return;
   }
   try {
-    S.init = await api('init');
+    // رسم‌های آزاد بی‌ربط به بقیه‌اند؛ اگر نیامد صفحه بی‌آن‌ها باز می‌شود
+    [S.init, S.coins] = await Promise.all([api('init'), api('drawings').then((r) => r.coins || {}, () => ({}))]);
   } catch (e) {
     $('loading').textContent = `❌ ${e.message}`;
     return;
@@ -904,7 +1186,8 @@ async function main() {
   tg.enableClosingConfirmation?.();
 
   buildControls();
-  setMode(new URLSearchParams(location.search).get('mode') === 'teacher' ? 'teacher' : 'bot');
+  const m = new URLSearchParams(location.search).get('mode');
+  setMode(['teacher', 'free'].includes(m) ? m : 'bot');
   if (pick) await loadCoin(pick);
 }
 

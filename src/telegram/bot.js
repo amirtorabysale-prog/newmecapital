@@ -16,7 +16,10 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { SCAN_INTERVALS, TIMEFRAMES, parseSymbol, saveSettings, setParam, resetParams } from '../config.js';
 import { scanOne, setupKey } from '../scanner.js';
-import { fetchFrom } from '../exchanges/index.js';
+import { fetchFrom, fetchCandles } from '../exchanges/index.js';
+import { drawings } from '../drawings.js';
+import { KINDS, freshTouches, confirmAt } from '../strategy/watch.js';
+import { atr } from '../strategy/indicators.js';
 import { TRACK_TF, MAX_5M, catchUp, needsCatchUp, newSignal, step } from '../tracker.js';
 import { applyEdits, validatePlan, hasEdits, checkLivePrice } from '../planEdit.js';
 import { renderChart } from '../chart/render.js';
@@ -468,6 +471,49 @@ export function createBot({ api, env, cfg, log = console }) {
       }
     } finally {
       tracking = false;
+    }
+  }
+
+  // ───────────────────────────── تماشای رسم‌های آزادِ استاد
+  /**
+   * هر ارزی که رسمِ تماشاشده دارد: کندل‌های یک‌ساعته‌ی بسته‌شده، و اگر آخرین
+   * کندل تازه به یکی از سطح‌ها رسید (۳ کندلِ قبل لمسش نکرده بودند)، سنجشِ
+   * RSI/واگرایی/کندل و خبر به ادمین‌ها. هر سطح برای هر کندل یک بار.
+   */
+  let watching = false;
+  async function runWatch() {
+    if (watching) return;
+    watching = true;
+    try {
+      for (const [base, list] of Object.entries(drawings.all())) {
+        const watched = list.filter((d) => d.watch);
+        const item = cfg.watchlist.find((w) => w.base === base);
+        if (!watched.length || !item) continue;
+        let data;
+        try {
+          data = await fetchCandles(item, cfg);
+        } catch (e) {
+          log.warn(`[watch] ${base}: ${e.message}`);
+          continue;
+        }
+        const cs = data.candles;
+        const k = cs.at(-1);
+        const A = atr(cs, cfg.strategy.atrPeriod).at(-1);
+        for (const d of watched) {
+          for (const hit of freshTouches(d, cs, A)) {
+            if (d.alerted?.[hit.key] === k.t) continue;
+            drawings.markAlerted(base, d.id, hit.key, k.t);
+            const check = confirmAt(cs, cfg.strategy, hit.side);
+            const text = M.watchAlert({ pretty: data.pretty, kind: KINDS[d.kind].fa, hit, close: k.c, check });
+            const url = webAppUrl();
+            const buttons = url ? [[{ text: '📌 دیدن روی چارت', web_app: { url: `${url}?mode=free&coin=${encodeURIComponent(base)}` } }]] : undefined;
+            for (const chat of adminIds()) api.sendMessage(chat, text, { buttons }).catch((e) => log.warn('[watch]', e.message));
+            log.info(`[watch] ${base} ${d.kind} ${hit.key} ${hit.side}`);
+          }
+        }
+      }
+    } finally {
+      watching = false;
     }
   }
 
@@ -927,7 +973,10 @@ export function createBot({ api, env, cfg, log = console }) {
     await recoverStuck();
     schedule();
     // پیگیری هر ۱۰ دقیقه — کندلِ ۵ دقیقه‌ای، پس دیرتر از ۱۵ دقیقه خبری نمی‌ماند
-    trackTimer = setInterval(() => runTracker().catch((e) => log.error('[track]', e)), 10 * 60_000);
+    trackTimer = setInterval(() => {
+      runTracker().catch((e) => log.error('[track]', e));
+      runWatch().catch((e) => log.error('[watch]', e));
+    }, 10 * 60_000);
     setTimeout(() => runTracker().catch((e) => log.error('[track]', e)), 20_000).unref?.();
     // مثلِ تایمرِ اسکن: polling پروسه را زنده نگه می‌دارد، این‌ها نباید
     trackTimer.unref?.();
@@ -950,7 +999,7 @@ export function createBot({ api, env, cfg, log = console }) {
     for (const a of adminIds()) api.sendMessage(a, text).catch(() => {});
   }
 
-  return { start, runScan, runTracker, commands, decide, schedule, onCallback, onMessage, state, isAdmin, onWebSave };
+  return { start, runScan, runTracker, runWatch, commands, decide, schedule, onCallback, onMessage, state, isAdmin, onWebSave };
 }
 
 function withNote(screen, note) {

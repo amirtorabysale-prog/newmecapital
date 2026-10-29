@@ -330,3 +330,20 @@ export function nearAlert(row) {
     'اگر روی خط شرط‌ها کامل شد، هشدارِ اصلی با دکمه‌ی انتشار می‌آید.',
   ].join('\n');
 }
+
+/**
+ * قیمت به رسمِ آزادِ استاد رسید (bot.js ← runWatch). این هشدار پلن و دکمه‌ی
+ * انتشار ندارد: تحلیل مالِ استاد است و تصمیم با خودش.
+ */
+export function watchAlert({ pretty, kind, hit, close, check }) {
+  const side = hit.side === 'long' ? 'از بالا — حمایت، به نفعِ <b>خرید</b>' : 'از پایین — مقاومت، به نفعِ <b>فروش</b>';
+  const zone = check.zoneLabel == null ? '' : ` (مرز ${check.zoneLabel})`;
+  const rows = [
+    `${check.oversold ? '✅' : '▫️'} RSI ${check.rsi.toFixed(1)}${check.oversold ? ` — در ناحیه‌ی اشباع${zone}` : ` — بیرون از اشباع${zone}`}`,
+    `${check.div ? '✅' : '▫️'} ${check.div ? `واگراییِ ${check.div.type === 'regular' ? 'معمولی' : 'مخفی'}` : 'بدونِ واگرایی'}`,
+    `${check.pattern ? '✅' : '▫️'} ${check.pattern ? `کندلِ برگشتی: ${esc(check.pattern.fa)}` : 'بدونِ کندلِ برگشتی'}`,
+  ];
+  return `📌 <b>${esc(pretty)}</b> به رسمِ استاد رسید: ${esc(kind)}${hit.label === 'خط' || hit.label === 'سطح' ? '' : ` (${esc(hit.label)})`}\n`
+    + `سطح ${price(hit.price)} · بسته‌شدن ${price(close, hit.price)}\n`
+    + `قیمت ${side}\n\n${rows.join('\n')}`;
+}

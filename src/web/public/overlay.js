@@ -118,7 +118,7 @@ export class Overlay extends Primitive {
     const x2 = this.x(s.to);
     if (x1 == null || x2 == null) return;
     const [lo, hi] = [s.lo[1], s.hi[1]];
-    const levels = [...new Set([...(s.levels || FIB_LEVELS), s.chosen].filter((v) => v != null))].sort((a, b) => a - b);
+    const levels = [...new Set([...(s.levels || FIB_LEVELS), s.chosen, ...(s.strong || [])].filter((v) => v != null))].sort((a, b) => a - b);
     const at = (L) => this.y(hi - L * (hi - lo));
     const color = (L) => FIB_COLORS[FIB_LEVELS.indexOf(L)] || '#2dd4bf';
     // نوارهای بینِ سطح‌ها
@@ -147,7 +147,8 @@ export class Overlay extends Primitive {
     for (const L of levels) {
       const y = at(L);
       if (y == null) continue;
-      const main = L === s.chosen;
+      // سطحِ استراتژی، یا سطح‌هایی که رسمِ آزاد تماشا می‌کند
+      const main = L === s.chosen || !!s.strong?.includes(L);
       const crowded = !main && labelled.some((o) => Math.abs(at(o) - y) < 11);
       if (!crowded && !main) labelled.push(L);
       ctx.strokeStyle = main ? '#2dd4bf' : color(L);

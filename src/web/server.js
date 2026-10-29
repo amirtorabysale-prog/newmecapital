@@ -20,6 +20,7 @@ import { fetchCandles, fetchFrom } from '../exchanges/index.js';
 import { LTF } from '../scanner.js';
 import { setParam } from '../config.js';
 import { PARAMS, paramByPath, getPath, coerce } from '../strategy/params.js';
+import { drawings } from '../drawings.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = join(HERE, 'public');
@@ -124,6 +125,15 @@ export function createWebServer({ cfg, token, isAdmin, onSaved = () => {}, log =
     return { saved: changes.length, errors, values: values(cfg) };
   }
 
+  async function readBody(req) {
+    let raw = '';
+    for await (const chunk of req) {
+      raw += chunk;
+      if (raw.length > 64_000) throw Object.assign(new Error('خیلی بزرگ'), { status: 413 });
+    }
+    return raw;
+  }
+
   async function handle(req, res) {
     const url = new URL(req.url, 'http://x');
     const send = (status, body, type = 'application/json; charset=utf-8') => {
@@ -145,14 +155,15 @@ export function createWebServer({ cfg, token, isAdmin, onSaved = () => {}, log =
     try {
       if (req.method === 'GET' && url.pathname === '/api/init') return send(200, init(user));
       if (req.method === 'GET' && url.pathname === '/api/candles') return send(200, await candles(url.searchParams.get('base') || ''));
-      if (req.method === 'POST' && url.pathname === '/api/save') {
-        let raw = '';
-        for await (const chunk of req) {
-          raw += chunk;
-          if (raw.length > 64_000) return send(413, { error: 'خیلی بزرگ' });
-        }
-        return send(200, save(user, JSON.parse(raw || '{}')));
+      if (req.method === 'GET' && url.pathname === '/api/drawings') return send(200, { coins: drawings.all() });
+      if (req.method === 'POST' && url.pathname === '/api/drawings') {
+        const body = JSON.parse((await readBody(req)) || '{}');
+        if (!cfg.watchlist.some((w) => w.base === body.base)) return send(404, { error: 'این ارز در واچ‌لیست نیست' });
+        const list = drawings.put(body.base, body.drawings);
+        log.info(`[web] ${user.id} رسم‌های ${body.base}: ${list.length}`);
+        return send(200, { drawings: list });
       }
+      if (req.method === 'POST' && url.pathname === '/api/save') return send(200, save(user, JSON.parse((await readBody(req)) || '{}')));
       return send(404, { error: 'not found' });
     } catch (e) {
       log.error('[web]', e.message);
