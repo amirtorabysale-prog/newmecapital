@@ -117,7 +117,7 @@ export function fitLine(candles, strategy, a, b) {
     // نقطه روی کفِ واقعی نیست: کفِ چرخشیِ همان نزدیکی را پیشنهاد بده
     if (maxS < lim(`${P}pivotStrength`).min) {
       const [sa, sb] = [snapLow(candles, a), snapLow(candles, b)];
-      if ((sa !== a || sb !== b) && sa !== sb) out.fix = { to: [sa, sb], why: `کفِ واقعیِ آن نزدیکی: ${when(candles, sa)} و ${when(candles, sb)}` };
+      if ((sa !== a || sb !== b) && sa !== sb && fitLine(candles, strategy, sa, sb).ok) out.fix = { to: [sa, sb], why: `کفِ واقعیِ آن نزدیکی: ${when(candles, sa)} و ${when(candles, sb)}` };
     }
     return out;
   }
@@ -158,7 +158,7 @@ export function fitLine(candles, strategy, a, b) {
   if (!best) {
     out.rival = rival;
     reasons.push('با هر تنظیمی خطِ دیگری از این بهتر رتبه می‌گیرد (به قیمت نزدیک‌تر است یا برخوردِ بیشتری دارد).');
-    if (rival) out.fix = { to: [rival.a, rival.b], why: `بات این خط را می‌بیند: ${when(candles, rival.a)} تا ${when(candles, rival.b)} (خط‌چینِ خاکستری)` };
+    if (rival && fitLine(candles, strategy, rival.a, rival.b).ok) out.fix = { to: [rival.a, rival.b], why: `بات این خط را می‌بیند: ${when(candles, rival.a)} تا ${when(candles, rival.b)} (خط‌چینِ خاکستری)` };
     return out;
   }
   out.ok = true;
@@ -182,6 +182,26 @@ export function fitLine(candles, strategy, a, b) {
  *            changes: {path: string, from: any, to: any}[], rsiP: number, rsiK: number }}
  */
 export function fitDivergence(candles, strategy, a, b, k, short = false) {
+  const out = fitDivergenceRaw(candles, strategy, a, b, k, short);
+  if (out.ok || k == null) return out;
+  // پیشنهاد فقط وقتی که واقعاً ✅ می‌گیرد: کفِ دوم روی K و کفِ اول همان، یا
+  // نزدیک‌ترین کفِ قبلی که با K واگرایی می‌سازد
+  const first = Math.min(a, b);
+  const cands = [first, ...pivotLows(candles, 1).filter((x) => x < k - 1 && x !== first)
+    .sort((x, y) => Math.abs(x - first) - Math.abs(y - first))].filter((x) => x < k).slice(0, 40);
+  for (const p of cands) {
+    if (p === first && Math.abs(Math.max(a, b) - k) <= 2) continue;
+    const r = fitDivergenceRaw(candles, strategy, p, k, k, short);
+    if (r.ok) {
+      out.fix = { to: [p, k], why: `${p === first ? 'کفِ اولِ خودت' : `کفِ قبلیِ ${when(candles, p)}`} و کفِ دوم روی کندلِ برخورد (${when(candles, k)})؛ ${r.type === 'regular' ? 'واگراییِ معمولی' : 'واگراییِ مخفی'}` };
+      return out;
+    }
+  }
+  out.reasons.push(`روی کندلِ برخورد (${when(candles, k)}) با هیچ کفِ قبلیِ نزدیکی واگرایی‌ای که بات قبول کند ساخته نمی‌شود؛ بات این ستاپ را بی‌واگرایی می‌بیند.`);
+  return out;
+}
+
+function fitDivergenceRaw(candles, strategy, a, b, k, short) {
   if (a > b) [a, b] = [b, a];
   const D = strategy.divergence;
   const Z = strategy.rsiZone;
@@ -194,7 +214,6 @@ export function fitDivergence(candles, strategy, a, b, k, short = false) {
   }
   if (Math.abs(b - k) > 2) {
     reasons.push(`بات واگرایی را روی کندلِ برخورد به خط می‌سنجد (${when(candles, k)}، K روی چارت)؛ کفِ دومِ تو ${Math.abs(b - k)} کندل با آن فاصله دارد.`);
-    if (a < k) out.fix = { to: [a, k], why: `کفِ دوم روی کندلِ برخورد (${when(candles, k)})` };
     return out;
   }
   const p = a;
@@ -216,7 +235,8 @@ export function fitDivergence(candles, strategy, a, b, k, short = false) {
   if (!type) {
     reasons.push(lk === lp
       ? 'دو کف هم‌قیمت‌اند؛ واگرایی تعریف نمی‌شود.'
-      : `قیمت و RSI هم‌جهت‌اند (قیمت ${lk < lp ? 'پایین‌تر' : 'بالاتر'}، RSI هم ${rk < rp ? 'پایین‌تر' : 'بالاتر'})؛ واگرایی نیست.`);
+      // برای فروش کندل‌ها قرینه‌اند؛ «پایین‌تر» ِ این‌جا روی چارتِ واقعی «بالاتر» است
+      : `قیمت و RSI هم‌جهت‌اند (قیمت ${(lk < lp) !== short ? 'پایین‌تر' : 'بالاتر'}، RSI هم ${(rk < rp) !== short ? 'پایین‌تر' : 'بالاتر'})؛ واگرایی نیست.`);
     return out;
   }
 
@@ -333,7 +353,9 @@ export function fitFib(candles, strategy, bot, lo, hi, level = null) {
   }
   if (Math.abs(lo - bot.lowIdx) > 2 || Math.abs(hi - bot.highIdx) > 2) {
     reasons.push(`بات فیبو را فقط از پایین‌ترین کفِ بعد از برخوردِ دوم تا سقفِ واکنش می‌کشد: ${when(candles, bot.lowIdx)} تا ${when(candles, bot.highIdx)}. فیبوی تو از ${when(candles, lo)} تا ${when(candles, hi)} است و این با هیچ تنظیمی عوض نمی‌شود.`);
-    out.fix = { to: [bot.lowIdx, bot.highIdx], why: `فیبوی بات: ${when(candles, bot.lowIdx)} تا ${when(candles, bot.highIdx)} (خط‌چینِ خاکستری)` };
+    const again = fitFib(candles, strategy, bot, bot.lowIdx, bot.highIdx, level);
+    if (!again.ok) reasons.push(`حتی فیبوی خودِ بات هم این‌جا جور نمی‌شود: ${again.reasons.join(' ')}`);
+    else out.fix = { to: [bot.lowIdx, bot.highIdx], why: `فیبوی بات: ${when(candles, bot.lowIdx)} تا ${when(candles, bot.highIdx)} (خط‌چینِ خاکستری)` };
     out.freeHint = true;
   }
   const start = candles[bot.lowIdx].l;
@@ -379,7 +401,7 @@ export function fitCandle(candles, strategy, i, state, short = false) {
     for (const d of [1, -1, 2, -2, 3, -3]) {
       const j = i + d;
       const p = j >= 0 && j < candles.length && PATTERNS.find((q) => q.test(candles, j, A));
-      if (p) { out.fix = { to: j, why: `${faName(p)} در ${when(candles, j)}` }; break; }
+      if (p && fitCandle(candles, strategy, j, state, short).ok) { out.fix = { to: j, why: `${faName(p)} در ${when(candles, j)}` }; break; }
     }
     return out;
   }

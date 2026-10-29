@@ -56,12 +56,18 @@ test('رسمِ آزاد: خلاصه وقتی بیشترِ فیبوها از بر
 test('فیبوی استاد: ❌ نقطه‌های بات را با زمان می‌گوید و دکمه‌ی درست کردن دارد', () => {
   const cs = Array.from({ length: 60 }, (_, i) => k(i, 100 + i, 101 + i, 99 + i, 100 + i));
   const strategy = { atrPeriod: 14, fib: { level: 0.618, toleranceAtr: 0.5, nearToleranceAtr: 1 } };
-  const bot = { line: { a: 0, b: 10, p0: 99, slope: 1 }, lowIdx: 40, highIdx: 50, k: 55 };
+  // خط در کندلِ برخورد روی سطحِ 0.618 ِ فیبوی بات (151 − 0.618 × 12)
+  const bot = { line: { a: 0, b: 10, p0: 143.6, slope: 0 }, lowIdx: 40, highIdx: 50, k: 55 };
   const f = fitFib(cs, strategy, bot, 5, 30);
   assert.equal(f.ok, false);
   assert.deepEqual(f.fix.to, [40, 50]);
+  assert.equal(fitFib(cs, strategy, bot, ...f.fix.to).ok, true);
   assert.match(f.reasons[0], /UTC/);
   assert.doesNotMatch(f.reasons[0], /کندلِ 40/);
+  // اگر حتی فیبوی خودِ بات جور نشود، پیشنهادی نمی‌دهد که دوباره ❌ بگیرد
+  const far = fitFib(cs, strategy, { ...bot, line: { ...bot.line, p0: 99, slope: 1 } }, 5, 30);
+  assert.equal(far.fix, undefined);
+  assert.match(far.reasons.at(-1), /حتی فیبوی خودِ بات/);
 });
 
 test('رسم‌ها روی دیسک: جایگزینی، حفظِ وضعیتِ هشدار، ردِ ورودیِ بد', async () => {
