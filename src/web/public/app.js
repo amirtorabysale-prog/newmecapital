@@ -9,9 +9,10 @@
 
 import { analyze } from './strategy/analyze.js';
 import { lineAt } from './strategy/trendline.js';
-import { rsi } from './strategy/indicators.js';
+import { rsi, ema } from './strategy/indicators.js';
 import { PARAMS, CONDITIONS, getPath, setPath, coerce, formatValue } from './strategy/params.js';
 import { fitAll } from './strategy/fit.js';
+import { Overlay, RsiBands } from './overlay.js';
 
 const tg = window.Telegram?.WebApp;
 tg?.ready();
@@ -31,7 +32,8 @@ const el = (tag, attrs = {}, ...kids) => {
 
 // پالتِ چارتِ گلدمی (src/lib/theme.ts ِ آن پروژه): کندل و حالت فقط سبز/قرمز/خاکستری،
 // رسم‌ها رنگِ خودشان را دارند و به سبز و قرمزِ کندل نزدیک نیستند
-const C = { line: '#38bdf8', teacher: '#f59e0b', fib: '#2dd4bf', fibDim: '#8e929e', div: '#a78bfa', candle: '#e879f9', entry: '#d4a62a', sl: '#ef4444', tp: '#22c55e', up: '#22c55e', down: '#ef4444' };
+// RSI و میانگینش رنگِ تریدینگ‌ویو (بنفش و زرد)، مثلِ تصویرِ استاد
+const C = { line: '#38bdf8', teacher: '#f59e0b', fib: '#2dd4bf', fibDim: '#8e929e', div: '#a78bfa', candle: '#e879f9', entry: '#d4a62a', sl: '#ef4444', tp: '#22c55e', up: '#22c55e', down: '#ef4444', ema: '#cbd5e1', rsi: '#7e57c2', rsiMa: '#fdd835' };
 const SURFACE = { background: '#171d2b', grid: '#1e222d', border: '#2a2e39', crosshair: '#3a3f4d', text: '#8e929e' };
 
 const S = {
@@ -97,34 +99,52 @@ const LW = window.LightweightCharts;
 // ⚠️ متنِ فارسی روی بومِ چارت ممنوع: کتابخانه بی‌دوجهته می‌کشد و «روی خط» برعکس
 // خوانده می‌شود. برچسب‌های روی چارت لاتین‌اند (ENTRY / SL / TP / TOUCH).
 const crossLine = { color: SURFACE.crosshair, labelBackgroundColor: SURFACE.border };
-const theme = {
+// فضای خالیِ سمت راست (کندل): جای جعبه‌ی فیبو و ناحیه‌ی پلن
+const RIGHT = 14;
+// قیمت و RSI یک چارت با دو pane ‌اند: زوم و اسکرول یکی، بدونِ همگام‌سازیِ دستی
+const chart = LW.createChart($('chart'), {
   localization: { locale: 'en-GB' },
-  layout: { background: { type: 'solid', color: SURFACE.background }, textColor: SURFACE.text, fontSize: 11, fontFamily: 'inherit' },
+  layout: {
+    background: { type: 'solid', color: SURFACE.background }, textColor: SURFACE.text, fontSize: 11, fontFamily: 'inherit',
+    panes: { separatorColor: SURFACE.border, separatorHoverColor: '#ffffff14', enableResize: true },
+    attributionLogo: false,
+  },
   grid: { vertLines: { color: SURFACE.grid }, horzLines: { color: SURFACE.grid } },
-  timeScale: { timeVisible: true, secondsVisible: false, borderColor: SURFACE.border, rightOffset: 6, minBarSpacing: 2 },
-  rightPriceScale: { borderColor: SURFACE.border, scaleMargins: { top: 0.12, bottom: 0.12 } },
+  timeScale: { timeVisible: true, secondsVisible: false, borderColor: SURFACE.border, rightOffset: RIGHT, barSpacing: 7, minBarSpacing: 2 },
+  rightPriceScale: { borderColor: SURFACE.border, scaleMargins: { top: 0.1, bottom: 0.18 } },
   crosshair: { mode: 0, vertLine: crossLine, horzLine: crossLine },
   autoSize: true,
-};
-const chart = LW.createChart($('price'), theme);
-// RSI فقط دنباله‌روی چارتِ قیمت است — خودش اسکرول/زوم نمی‌شود تا دو چارت هم را بی‌پایان جابه‌جا نکنند
-const rsiChart = LW.createChart($('rsi'), { ...theme, timeScale: { ...theme.timeScale, visible: false }, handleScroll: false, handleScale: false });
+});
 
-// بدنه، مرز و سایه یک رنگ: مرزِ متفاوت کندل‌های باریک را لکه می‌کند
-const candleS = chart.addCandlestickSeries({ upColor: C.up, downColor: C.down, borderUpColor: C.up, borderDownColor: C.down, wickUpColor: C.up, wickDownColor: C.down });
 const quiet = { lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false };
-const botLineS = chart.addLineSeries({ color: C.line, lineWidth: 2, ...quiet });
-const teacherS = chart.addLineSeries({ color: C.teacher, lineWidth: 2, lineStyle: 2, ...quiet });
-const divS = chart.addLineSeries({ color: C.div, lineWidth: 2, lineStyle: 2, ...quiet });
-const rsiS = rsiChart.addLineSeries({ color: '#cbd5e1', lineWidth: 1, ...quiet, lastValueVisible: true });
-const rsiDivS = rsiChart.addLineSeries({ color: C.div, lineWidth: 2, lineStyle: 2, ...quiet });
-const teacherRsiS = rsiChart.addLineSeries({ color: C.div, lineWidth: 2, lineStyle: 2, ...quiet });
-const tDivS = chart.addLineSeries({ color: C.div, lineWidth: 2, ...quiet });
-const previewS = chart.addLineSeries({ color: '#f8fafc', lineWidth: 1, lineStyle: 2, ...quiet });
+// بدنه، مرز و سایه یک رنگ: مرزِ متفاوت کندل‌های باریک را لکه می‌کند
+const candleS = chart.addSeries(LW.CandlestickSeries, {
+  upColor: C.up, downColor: C.down, borderUpColor: C.up, borderDownColor: C.down, wickUpColor: C.up, wickDownColor: C.down,
+  priceLineStyle: LW.LineStyle.Dotted,
+});
+// حجم: پایینِ همان pane، روی مقیاسِ جدا
+const volS = chart.addSeries(LW.HistogramSeries, { priceScaleId: 'vol', priceFormat: { type: 'volume' }, ...quiet });
+volS.priceScale().applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
+const emaS = chart.addSeries(LW.LineSeries, { color: C.ema, lineWidth: 1, ...quiet });
+const rsiS = chart.addSeries(LW.LineSeries, { color: C.rsi, lineWidth: 1.5, priceLineVisible: false, crosshairMarkerVisible: false }, 1);
+const rsiMaS = chart.addSeries(LW.LineSeries, { color: C.rsiMa, lineWidth: 1, priceLineVisible: false, crosshairMarkerVisible: false }, 1);
+rsiS.priceScale().applyOptions({ scaleMargins: { top: 0.08, bottom: 0.08 } });
+rsiS.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) });
+{
+  const [p0, p1] = chart.panes();
+  if (p0.setStretchFactor) { p0.setStretchFactor(2.6); p1.setStretchFactor(1); }
+  else p1.setHeight(130);
+}
+
+const markersApi = LW.createSeriesMarkers(candleS, []);
+const overlay = new Overlay();
+candleS.attachPrimitive(overlay);
+const rsiOverlay = new Overlay();
+rsiS.attachPrimitive(rsiOverlay);
+const bands = new RsiBands();
+rsiS.attachPrimitive(bands);
 let priceLines = [];
 let rsiLines = [];
-
-chart.timeScale().subscribeVisibleLogicalRangeChange((r) => { if (r) rsiChart.timeScale().setVisibleLogicalRange(r); });
 
 const T = (i) => Math.floor(S.data.candles[i].t / 1000);
 
@@ -133,18 +153,88 @@ function precisionFor(price) {
   return { type: 'price', precision: p, minMove: 1 / 10 ** p };
 }
 
+function sma(values, n) {
+  const out = new Array(values.length).fill(NaN);
+  let sum = 0;
+  let cnt = 0;
+  for (let i = 0; i < values.length; i++) {
+    if (!Number.isFinite(values[i])) { sum = 0; cnt = 0; continue; }
+    sum += values[i];
+    cnt++;
+    if (cnt > n) sum -= values[i - n];
+    if (cnt >= n) out[i] = sum / n;
+  }
+  return out;
+}
+
+const pt = (v, i) => (Number.isFinite(v) ? { time: T(i), value: v } : { time: T(i) });
+
 function setData() {
   const cs = S.data.candles;
   candleS.applyOptions({ priceFormat: precisionFor(cs.at(-1).c) });
   candleS.setData(cs.map((k, i) => ({ time: T(i), open: k.o, high: k.h, low: k.l, close: k.c })));
+  volS.setData(cs.map((k, i) => ({ time: T(i), value: k.v || 0, color: k.c >= k.o ? `${C.up}55` : `${C.down}55` })));
   // گوشی: ۱۵۰ کندل یعنی هر کندل ۲ پیکسل؛ کمتر نشان بده، با دو انگشت عقب برو
-  const bars = Math.max(60, Math.min(150, Math.round($('price').clientWidth / 6)));
-  chart.timeScale().setVisibleLogicalRange({ from: cs.length - bars, to: cs.length + 6 });
+  const bars = Math.max(60, Math.min(150, Math.round($('chart').clientWidth / 6)));
+  chart.timeScale().setVisibleLogicalRange({ from: cs.length - bars, to: cs.length + RIGHT });
+  legend();
 }
 
-function seg(series, pts) {
-  series.setData(pts && pts[0].time < pts[1].time ? pts : []);
+// ───────────────────────────── نوارِ بالای چارت و شمارشِ معکوس (HTML، نه بوم)
+
+function legend(i) {
+  if (!S.data) return;
+  const cs = S.data.candles;
+  const n = i == null ? cs.length - 1 : Math.max(0, Math.min(cs.length - 1, i));
+  const k = cs[n];
+  const prev = cs[n - 1] || k;
+  const f = (v) => candleS.priceFormatter().format(v);
+  const ch = k.c - prev.c;
+  const color = ch >= 0 ? C.up : C.down;
+  const pct = prev.c ? (ch / prev.c) * 100 : 0;
+  $('legend').replaceChildren(
+    el('div', { class: 'sym' }, el('b', {}, S.data.pretty || S.data.id), ` · ${S.data.timeframe} · ${S.data.exchange}`),
+    el('div', { class: 'ohlc' },
+      ...[['O', k.o], ['H', k.h], ['L', k.l], ['C', k.c]].map(([t, v]) => el('span', {}, `${t} `, el('i', { style: `color:${color}` }, f(v)))),
+      el('i', { style: `color:${color}` }, `${ch >= 0 ? '+' : ''}${f(ch)} (${ch >= 0 ? '+' : ''}${pct.toFixed(2)}%)`)),
+    el('div', { class: 'ind' },
+      el('span', { style: `color:${C.ema}` }, `EMA ${S.legendCfg?.ema ?? ''}`),
+      el('span', { style: `color:${C.rsi}` }, `RSI ${S.legendCfg?.rsi ?? ''}`),
+      el('span', { style: `color:${C.rsiMa}` }, `MA ${RSI_MA}`)),
+  );
 }
+
+const TF_MS = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 };
+function tfMs(tf) {
+  const m = /^(\d+)([mhdw])$/.exec(tf || '');
+  return m ? Number(m[1]) * TF_MS[m[2]] : 3_600_000;
+}
+
+// زیرِ برچسبِ قیمتِ آخر روی محور، مثلِ تریدینگ‌ویو: تا بسته شدنِ کندلِ فعلی
+function countdown() {
+  const box = $('countdown');
+  if (!S.data) { box.hidden = true; return; }
+  const k = S.data.candles.at(-1);
+  const y = candleS.priceToCoordinate(k.c);
+  const w = chart.priceScale('right').width();
+  const h = chart.panes()[0].getHeight?.() ?? Infinity;
+  if (y == null || y < 0 || y > h - 30 || !w) { box.hidden = true; return; }
+  const ms = tfMs(S.data.timeframe);
+  const left = ms - (Date.now() % ms);
+  const s = Math.floor(left / 1000);
+  const hh = Math.floor(s / 3600);
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  box.textContent = hh ? `${String(hh).padStart(2, '0')}:${mm}:${ss}` : `${mm}:${ss}`;
+  box.style.width = `${w}px`;
+  box.style.top = `${y + 9}px`;
+  box.style.background = k.c >= k.o ? C.up : C.down;
+  box.hidden = false;
+}
+setInterval(countdown, 1000);
+chart.timeScale().subscribeVisibleLogicalRangeChange(() => requestAnimationFrame(countdown));
+
+const RSI_MA = 14;
 
 function draw() {
   if (!S.data) return;
@@ -159,13 +249,22 @@ function draw() {
   priceLines = [];
   rsiLines = [];
   const pl = (price, color, title, style = 0, width = 1) => priceLines.push(candleS.createPriceLine({ price, color, title, lineStyle: style, lineWidth: width, axisLabelVisible: true }));
+  const shapes = [];
+  const rsiShapes = [];
 
-  // RSI
-  const r = rsi(cs.map((k) => k.c), cfg.strategy.rsiPeriod);
-  rsiS.setData(r.map((v, i) => (Number.isFinite(v) ? { time: T(i), value: v } : { time: T(i) })));
-  const Z = cfg.strategy.rsiZone;
-  for (const [v, c] of [[Z?.enabled ? Z.low : 30, '#ef444480'], [Z?.enabled ? Z.high : 70, '#22c55e80'], [50, '#ffffff22']]) {
-    rsiLines.push(rsiS.createPriceLine({ price: v, color: c, lineWidth: 1, lineStyle: 2, axisLabelVisible: false }));
+  // EMA ِ فیلترِ روند و RSI با میانگینش
+  const st = cfg.strategy;
+  emaS.setData(ema(cs.map((k) => k.c), st.trendFilter.emaPeriod).map(pt));
+  const r = rsi(cs.map((k) => k.c), st.rsiPeriod);
+  rsiS.setData(r.map(pt));
+  rsiMaS.setData(sma(r, RSI_MA).map(pt));
+  S.legendCfg = { ema: st.trendFilter.emaPeriod, rsi: st.rsiPeriod };
+  // مرزهای اشباع همان rsiZone ِ استراتژی‌اند (30/80)، نه 30/70 ِ پیش‌فرضِ تریدینگ‌ویو
+  const Z = st.rsiZone;
+  const [zl, zh] = Z?.enabled ? [Z.low, Z.high] : [30, 70];
+  bands.set(r, zl, zh);
+  for (const [v, c, s] of [[zl, '#787b86', 2], [zh, '#787b86', 2], [50, '#787b8666', 1]]) {
+    rsiLines.push(rsiS.createPriceLine({ price: v, color: c, lineWidth: 1, lineStyle: s, axisLabelVisible: false }));
   }
 
   const markers = [];
@@ -175,43 +274,45 @@ function draw() {
 
   if (res) {
     const L = res.line;
-    seg(botLineS, [{ time: T(L.a), value: L.p0 }, { time: T(last), value: lineAt(L, last) }]);
-    L.touches.forEach((t, n) => mk(t, String(n + 1), C.line));
+    // خطِ روند تا لبه‌ی راست ادامه دارد: جایی که قیمت باید به آن برسد
+    shapes.push({ kind: 'seg', a: [L.a, L.p0], b: [last, lineAt(L, last)], color: C.line, ray: true });
+    L.touches.forEach((t, n) => {
+      shapes.push({ kind: 'dot', at: [t, lineAt(L, t)], color: C.line });
+      mk(t, String(n + 1), C.line);
+    });
     if (L.state !== 'far') mk(L.touchIdx, L.state === 'touch' ? 'TOUCH' : 'NEAR', L.state === 'touch' ? C.tp : C.fib, 'circle');
 
-    // فیبو
+    // فیبو: از کفِ موج تا سقفِ موج، جعبه تا فضای خالیِ سمت راست
     const F = res.fib;
-    pl(F.end, C.fibDim, '0', 2);
-    pl(F.start, C.fibDim, '1', 2);
-    pl(F.price, C.fib, String(F.level), 0, 2);
+    shapes.push({ kind: 'fib', from: Math.min(F.lowIdx, F.highIdx), to: last + RIGHT - 2, lo: [F.lowIdx, F.start], hi: [F.highIdx, F.end], chosen: F.level });
 
-    // واگرایی
+    // واگرایی: فلش روی قیمت و روی RSI
     if (res.div) {
-      seg(divS, [{ time: T(res.div.p), value: res.div.priceP }, { time: T(res.div.k), value: res.div.priceK }]);
-      seg(rsiDivS, [{ time: T(res.div.p), value: res.div.rsiP }, { time: T(res.div.k), value: res.div.rsiK }]);
-    } else {
-      divS.setData([]);
-      rsiDivS.setData([]);
+      shapes.push({ kind: 'seg', a: [res.div.p, res.div.priceP], b: [res.div.k, res.div.priceK], color: C.div, arrow: true });
+      rsiShapes.push({ kind: 'seg', a: [res.div.p, res.div.rsiP], b: [res.div.k, res.div.rsiK], color: C.div, arrow: true });
     }
-    if (res.candle) mk(res.candle.idx, res.candle.name, '#e879f9', 'square');
+    if (res.candle) mk(res.candle.idx, res.candle.name, C.candle, 'square');
 
-    // پلن
+    // پلن: خط روی محور + ناحیه‌ی سود و ضرر جلوی آخرین کندل
     if (res.plan) {
-      pl(res.plan.entry, C.entry, 'ENTRY');
-      pl(res.plan.sl, C.sl, 'SL');
-      for (const t of res.plan.tps) pl(t.price, C.tp, t.label, 2);
+      const P = res.plan;
+      pl(P.entry, C.entry, 'ENTRY');
+      pl(P.sl, C.sl, 'SL');
+      for (const t of P.tps) pl(t.price, C.tp, t.label, 2);
+      const to = last + RIGHT - 2;
+      if (P.tps.length) shapes.push({ kind: 'zone', from: last, to, a: P.entry, b: P.tps[0].price, color: C.tp, text: `RR ${P.tps[0].rr.toFixed(2)}` });
+      shapes.push({ kind: 'zone', from: last, to, a: P.entry, b: P.sl, color: C.sl, text: `${P.riskPct.toFixed(2)}%` });
     }
-  } else {
-    botLineS.setData([]);
-    divS.setData([]);
-    rsiDivS.setData([]);
   }
 
-  if (S.mode === 'teacher') drawTeacher(markers, pl, r);
-  else for (const x of [teacherS, tDivS, teacherRsiS, previewS]) x.setData([]);
+  if (S.mode === 'teacher') drawTeacher(markers, shapes, rsiShapes, r);
 
+  overlay.set(shapes);
+  rsiOverlay.set(rsiShapes);
   markers.sort((x, y) => x.time - y.time);
-  candleS.setMarkers(markers);
+  markersApi.setMarkers(markers);
+  legend();
+  countdown();
 }
 
 // ───────────────────────────── تحلیل و خلاصه
@@ -447,7 +548,7 @@ const posOf = (kind) => (usesLow(kind) ? 'belowBar' : 'aboveBar');
  * برداشته می‌شد و روی گوشی (هر کندل ~۲ پیکسل) نقطه جای دیگری می‌پرید.
  */
 const HIT_PX = 22;
-function pickAt(point, kind) {
+function pickAt(point, kind, paneIndex = 0) {
   if (!point || !S.data) return null;
   const cs = S.data.candles;
   const ts = chart.timeScale();
@@ -455,6 +556,8 @@ function pickAt(point, kind) {
   if (logical == null) return null;
   const c = Math.max(0, Math.min(cs.length - 1, Math.round(logical)));
   if (kind === 'x') return c;
+  // زدن روی pane ِ RSI: y قیمت نیست؛ فقط کندلِ زیرِ انگشت و لغزیدن تا تهِ کف
+  if (paneIndex) point = { x: point.x, y: candleS.priceToCoordinate(priceOf(c, kind)) ?? 0 };
   const spacing = Math.max(0.5, Math.abs((ts.logicalToCoordinate(1) ?? 0) - (ts.logicalToCoordinate(0) ?? 0)));
   const r = Math.max(1, Math.ceil(HIT_PX / spacing));
   let best = null;
@@ -480,8 +583,9 @@ function pickAt(point, kind) {
 }
 
 chart.subscribeCrosshairMove((param) => {
+  legend(param.logical == null ? null : Math.round(param.logical));
   if (S.mode !== 'teacher' || !S.tool) return;
-  const j = pickAt(param.point, TOOLS[S.tool].pts[S.pend.length]);
+  const j = pickAt(param.point, TOOLS[S.tool].pts[S.pend.length], param.paneIndex);
   if (j === S.hover) return;
   S.hover = j;
   draw();
@@ -490,7 +594,7 @@ chart.subscribeCrosshairMove((param) => {
 chart.subscribeClick((param) => {
   if (S.mode !== 'teacher' || !S.tool || !S.data) return;
   const kinds = TOOLS[S.tool].pts;
-  const i = pickAt(param.point, kinds[S.pend.length]);
+  const i = pickAt(param.point, kinds[S.pend.length], param.paneIndex);
   if (i == null || S.pend.includes(i)) return;
   S.pend.push(i);
   S.hover = null;
@@ -691,37 +795,33 @@ function clearTeacher(run = true) {
 }
 
 /** رسم‌های استاد روی چارتِ خالی (draw صدایش می‌زند) */
-function drawTeacher(markers, pl, r) {
+function drawTeacher(markers, shapes, rsiShapes, r) {
   const cs = S.data.candles;
   const last = cs.length - 1;
   const items = S.all?.items || {};
   const mark = (i, kind, tag, color, shape = 'circle') => markers.push({ time: T(i), position: posOf(kind), color, shape, text: tag });
-  for (const x of [teacherS, tDivS, teacherRsiS, previewS]) x.setData([]);
 
   if (S.t.line) {
     const [a, b] = [...S.t.line].sort((x, y) => x - y);
-    const slope = (priceOf(b, 'low') - priceOf(a, 'low')) / (b - a);
-    seg(teacherS, [{ time: T(a), value: priceOf(a, 'low') }, { time: T(last), value: priceOf(a, 'low') + slope * (last - a) }]);
+    shapes.push({ kind: 'seg', a: [a, priceOf(a, 'low')], b: [b, priceOf(b, 'low')], color: C.teacher, ray: true });
+    for (const i of [a, b]) shapes.push({ kind: 'dot', at: [i, priceOf(i, 'low')], color: C.teacher });
     S.t.line.forEach((i, n) => mark(i, 'low', `L${n + 1}`, TOOLS.line.color));
   }
   if (S.t.fib) {
     const [lo, hi] = S.t.fib;
-    const start = priceOf(lo, 'low');
-    const end = priceOf(hi, 'high');
-    const at = (L) => end - L * (end - start);
-    const chosen = items.fib?.level;
-    pl(end, C.fibDim, '0', 2);
-    pl(start, C.fibDim, '1', 2);
-    for (const L of PARAMS.find((q) => q.path === 'strategy.fib.level').choices) {
-      pl(at(L), L === chosen ? C.fib : `${C.fib}66`, String(L), L === chosen ? 0 : 2, L === chosen ? 2 : 1);
-    }
+    // سطح‌های قابلِ انتخاب در استراتژی کنارِ سطح‌های استاندارد
+    const choices = PARAMS.find((q) => q.path === 'strategy.fib.level').choices;
+    shapes.push({
+      kind: 'fib', from: Math.min(lo, hi), to: last + RIGHT - 2, lo: [lo, priceOf(lo, 'low')], hi: [hi, priceOf(hi, 'high')],
+      levels: [...new Set([0, 1, ...choices])], chosen: items.fib?.level,
+    });
     mark(lo, 'low', 'F1', C.fib);
     mark(hi, 'high', 'F2', C.fib);
   }
   if (S.t.div) {
     const [p, q] = [...S.t.div].sort((x, y) => x - y);
-    seg(tDivS, [{ time: T(p), value: priceOf(p, 'low') }, { time: T(q), value: priceOf(q, 'low') }]);
-    if (Number.isFinite(r[p]) && Number.isFinite(r[q])) seg(teacherRsiS, [{ time: T(p), value: r[p] }, { time: T(q), value: r[q] }]);
+    shapes.push({ kind: 'seg', a: [p, priceOf(p, 'low')], b: [q, priceOf(q, 'low')], color: C.div, arrow: true });
+    if (Number.isFinite(r[p]) && Number.isFinite(r[q])) rsiShapes.push({ kind: 'seg', a: [p, r[p]], b: [q, r[q]], color: C.div, arrow: true });
     mark(p, 'low', 'D1', C.div);
     mark(q, 'low', 'D2', C.div);
   }
@@ -740,7 +840,7 @@ function drawTeacher(markers, pl, r) {
       mark(S.hover, kind, `${T0.tag}${T0.pts.length > 1 ? S.pend.length + 1 : ''}`, '#f8fafc');
       if (S.pend.length === 1) {
         const [a, b] = [[S.pend[0], T0.pts[0]], [S.hover, kind]].sort((x, y) => x[0] - y[0]);
-        seg(previewS, [{ time: T(a[0]), value: priceOf(...a) }, { time: T(b[0]), value: priceOf(...b) }]);
+        shapes.push({ kind: 'seg', a: [a[0], priceOf(...a)], b: [b[0], priceOf(...b)], color: '#f8fafc', width: 1, dash: [5, 4] });
       }
     }
   }

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>چارت زنده</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://unpkg.com/lightweight-charts@5.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -23,8 +23,9 @@
 </nav>
 
 <div id="charts">
-  <div id="price"></div>
-  <div id="rsi"></div>
+  <div id="chart"></div>
+  <div id="legend" class="legend"></div>
+  <div id="countdown" class="countdown" hidden></div>
   <div id="loading" class="overlay">در حالِ گرفتنِ کندل‌ها…</div>
 </div>
 

@@ -32,8 +32,14 @@ button.on { background: var(--accent); color: var(--accent-fg); border-color: tr
 .score.alert { background: #14532d; color: #86efac; }
 
 #charts { position: relative; direction: ltr; background: #171d2b; }
-#price { height: 52vh; min-height: 280px; }
-#rsi { height: 15vh; min-height: 90px; border-top: 1px solid #ffffff14; }
+#chart { height: 68vh; min-height: 380px; }
+/* نوارِ بالای چارت مثلِ تریدینگ‌ویو: نماد، تایم‌فریم، صرافی، OHLC و تغییر */
+.legend { position: absolute; top: 4px; left: 8px; right: 70px; z-index: 2; pointer-events: none; font: 11px/1.45 system-ui, sans-serif; color: #b2b5be; text-align: left; }
+.legend .sym b { color: #e6e8ee; font-weight: 600; }
+.legend .ohlc { display: flex; flex-wrap: wrap; gap: 0 8px; }
+.legend i, .legend .ind span { font-style: normal; }
+.legend .ind { display: flex; gap: 8px; opacity: 0.85; }
+.countdown { position: absolute; right: 0; z-index: 2; pointer-events: none; color: #fff; font: 11px/16px system-ui, sans-serif; text-align: center; font-variant-numeric: tabular-nums; }
 .overlay { position: absolute; inset: 0; display: grid; place-items: center; background: #000a; color: var(--fg); z-index: 3; text-align: center; padding: 16px; }
 
 .tools { display: flex; gap: 8px; align-items: center; padding: 8px 12px; flex-wrap: wrap; }
