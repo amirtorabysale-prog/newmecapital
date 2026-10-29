@@ -57,6 +57,37 @@ const ceilTo = (v, path) => { const s = stepOf(path); return Number((Math.ceil(v
  *            changes: {path: string, from: any, to: any}[], line: object|null, rival: object|null }}
  */
 export function fitLine(candles, strategy, a, b) {
+  const out = fitLineRaw(candles, strategy, a, b);
+  if (out.ok) return out;
+  // پیشنهاد فقط اگر واقعاً ✅ بگیرد. به ترتیب: کفِ واقعیِ همان نزدیکی، خطِ رقیب،
+  // خطی که بات با تنظیمِ فعلی می‌بیند، و جفت‌کف‌های چرخشیِ اطرافِ نقطه‌های استاد
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  const last = candles.length - 1;
+  const cands = [[snapLow(candles, lo), snapLow(candles, hi), 'کفِ واقعیِ همان نزدیکی']];
+  if (out.rival) cands.push([out.rival.a, out.rival.b, 'خطی که بات به‌جای این می‌بیند']);
+  const own = findTrendline(candles, atr(candles, strategy.atrPeriod)[last], strategy.trendline);
+  if (own) cands.push([own.a, own.b, 'خطی که بات با تنظیمِ فعلی می‌بیند']);
+  const piv = pivotLows(candles, 2);
+  const near = (x, r) => piv.filter((p) => Math.abs(p - x) <= r).sort((u, v) => Math.abs(u - x) - Math.abs(v - x));
+  // نقطه‌ی دوم روی چند کندلِ آخر هنوز کفِ تأییدشده نیست؛ کف‌های قبل‌ترش را هم ببین
+  for (const x of near(lo, 15).slice(0, 5)) {
+    for (const y of near(Math.min(hi, last - 3), 30).slice(0, 6)) cands.push([x, y, 'نزدیک‌ترین جفتِ کفِ چرخشی']);
+  }
+  const tried = new Set([`${lo}:${hi}`]);
+  for (const [x, y, label] of cands) {
+    if (x >= y || tried.has(`${x}:${y}`)) continue;
+    tried.add(`${x}:${y}`);
+    if (tried.size > 30) break;
+    if (fitLineRaw(candles, strategy, x, y).ok) {
+      out.fix = { to: [x, y], why: `${label}: ${when(candles, x)} و ${when(candles, y)} (خط‌چینِ خاکستری)` };
+      return out;
+    }
+  }
+  out.noFix = 'هیچ خطِ نزدیکی پیدا نشد که بات قبولش کند.';
+  return out;
+}
+
+function fitLineRaw(candles, strategy, a, b) {
   if (a > b) [a, b] = [b, a];
   const T = strategy.trendline;
   const n = candles.length;
@@ -109,18 +140,12 @@ export function fitLine(candles, strategy, a, b) {
   if (need.spacingMax < lim(`${P}minSpacing`).min) {
     reasons.push(k - b < b - a ? `کفِ دوم خیلی نزدیک به کندلِ آخر است (${k - b} کندل).` : `دو کف خیلی نزدیک‌اند (${b - a} کندل).`);
   }
-  if (need.bounceMax < lim(`${P}minBounceAtr`).min) reasons.push(`بعد از یکی از کف‌ها قیمت فقط ${need.bounceMax.toFixed(2)} ATR از خط دور شده؛ برخوردِ ماژور حساب نمی‌شود.`);
+  // کفِ دوم روی کندلِ آخر: بعدش کندلی نیست و «واکنش» بی‌معناست (-Infinity)؛ «خیلی نزدیک» همین را می‌گوید
+  if (Number.isFinite(need.bounceMax) && need.bounceMax < lim(`${P}minBounceAtr`).min) reasons.push(`بعد از یکی از کف‌ها قیمت فقط ${need.bounceMax.toFixed(2)} ATR از خط دور شده؛ برخوردِ ماژور حساب نمی‌شود.`);
   if (want.lookback > lim(`${P}lookback`).max) reasons.push(`کفِ اول خیلی قدیمی است (${need.lookbackMin} کندل پیش؛ بیشینه ${lim(`${P}lookback`).max}).`);
   if (want.breakToleranceAtr > lim(`${P}breakToleranceAtr`).max) reasons.push(`کندلی ${closeBelow.toFixed(2)} ATR زیرِ خط بسته شده؛ خط شکسته است.`);
   if (want.maxWickPierceAtr > lim(`${P}maxWickPierceAtr`).max) reasons.push(`سایه‌ای ${wickBelow.toFixed(2)} ATR از خط رد شده.`);
-  if (reasons.length) {
-    // نقطه روی کفِ واقعی نیست: کفِ چرخشیِ همان نزدیکی را پیشنهاد بده
-    if (maxS < lim(`${P}pivotStrength`).min) {
-      const [sa, sb] = [snapLow(candles, a), snapLow(candles, b)];
-      if ((sa !== a || sb !== b) && sa !== sb && fitLine(candles, strategy, sa, sb).ok) out.fix = { to: [sa, sb], why: `کفِ واقعیِ آن نزدیکی: ${when(candles, sa)} و ${when(candles, sb)}` };
-    }
-    return out;
-  }
+  if (reasons.length) return out;
 
   // ── ۲. اجرای واقعی؛ اگر خطِ دیگری جلو افتاد، سخت‌گیرتر
   // «همان خط» یعنی از هر دو کفِ استاد رد شود (با همان تحملِ برخوردهای اضافه)،
@@ -158,7 +183,6 @@ export function fitLine(candles, strategy, a, b) {
   if (!best) {
     out.rival = rival;
     reasons.push('با هر تنظیمی خطِ دیگری از این بهتر رتبه می‌گیرد (به قیمت نزدیک‌تر است یا برخوردِ بیشتری دارد).');
-    if (rival && fitLine(candles, strategy, rival.a, rival.b).ok) out.fix = { to: [rival.a, rival.b], why: `بات این خط را می‌بیند: ${when(candles, rival.a)} تا ${when(candles, rival.b)} (خط‌چینِ خاکستری)` };
     return out;
   }
   out.ok = true;
