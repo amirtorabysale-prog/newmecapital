@@ -8,7 +8,8 @@
     "start": "node src/index.js",
     "scan": "node scripts/scan-once.js",
     "backtest": "node scripts/backtest.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "backtest:rsi3": "node scripts/backtest-rsi3.js"
   },
   "engines": {
     "node": ">=22"
