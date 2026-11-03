@@ -404,7 +404,7 @@ export function trendChartCaption({ pretty, exchange, ev, open, state, shown, la
   if (ev.ok) {
     lines.push(`کلوزِ ${utc(ev.t).slice(0, 10)}: <code>${P(ev.close)}</code> · EMA${emaPeriod} <code>${P(ev.ema)}</code> (${ev.distPct >= 0 ? '+' : ''}${ev.distPct.toFixed(1)}٪)`);
   }
-  const src = { live: 'سیگنالِ منتشرشده', paper: 'دفترِ کاغذی', rule: 'طبقِ قاعده — بات این را ثبت نکرده، چون روند خاموش بوده', alert: 'هشدارِ امروز' };
+  const src = { live: 'سیگنالِ منتشرشده', paper: 'دفترِ کاغذی', rule: 'طبقِ قاعده — بات این ورود را نگرفته، چون تقاطع پیش از روشن شدنِ روند بود و ورودِ دیرهنگام گرفته نمی‌شود', alert: 'هشدارِ امروز' };
   if (open) {
     const pct = ((open.entry - open.stop) / open.entry) * 100;
     lines.push('', state === 'entry' ? '🟢 <b>ورودِ تازه</b> روی همین کلوز' : `🟢 <b>در روند</b> از کلوزِ ${utc(open.entryBarT).slice(0, 10)}`,
