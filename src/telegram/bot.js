@@ -782,6 +782,19 @@ export function createBot({ api, env, cfg, log = console }) {
         return show(chat, msgId, UI.trend(s(), true));
       }
 
+      case 'tchart': {
+        // در هر حالتی کار می‌کند، حتی خاموش — دیدنِ قاعده روی چارت تصمیمی نمی‌گیرد
+        await api.answer(cb.id, 'در حالِ ساختنِ چارتِ روند…');
+        const item = cfg.watchlist.find((w) => w.base === a1) || parseSymbol(a1);
+        try {
+          const { png, caption } = await trend.chart(item);
+          return await sendPhotoWithText(chat, png, caption, [[{ text: '🗑 بستن', callback_data: 'act:close' }]]);
+        } catch (e) {
+          log.warn('[trend] چارت:', e.message);
+          return api.sendMessage(chat, `⚠️ چارتِ روندِ ${M.esc(a1)} ساخته نشد: ${M.esc(e.message).slice(0, 300)}`);
+        }
+      }
+
       case 'trun': {
         if (cfg.trend?.mode === 'off') return api.answer(cb.id, 'روند خاموش است.', true);
         if (trend.isRunning()) return api.answer(cb.id, 'همین الان در جریان است.', true);

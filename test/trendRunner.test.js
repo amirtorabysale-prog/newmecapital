@@ -39,8 +39,12 @@ function fakeApi() {
   const calls = [];
   let mid = 100;
   const rec = (name) => async (...args) => { calls.push({ name, args }); return { message_id: ++mid }; };
-  return { calls, sendMessage: rec('sendMessage'), editText: rec('editText'), answer: rec('answer') };
+  return { calls, sendMessage: rec('sendMessage'), sendPhoto: rec('sendPhoto'), editText: rec('editText'), answer: rec('answer') };
 }
+/** متنِ پیام: sendMessage(chat, text) یا sendPhoto(chat, png, caption) */
+const txt = (c) => (c.name === 'sendPhoto' ? c.args[2] : c.args[1]);
+const opts = (c) => c.args[c.name === 'sendPhoto' ? 3 : 2];
+const isPng = (b) => Buffer.isBuffer(b) && b.subarray(1, 4).toString() === 'PNG';
 const quiet = { info() {}, warn() {}, error() {} };
 
 function setup(mode, series) {
@@ -76,7 +80,9 @@ test('کاغذی: ورود یک بار، خروج با کلوزِ زیرِ EMA،
   const now = today - DAY + 3_600_000;
   await runner.runDaily(now);
   assert.ok(store.trend().book.TEST, 'پوزیشنِ کاغذی باز شد');
-  assert.match(api.calls[0].args[1], /کاغذیِ روند.*ورود/s);
+  assert.equal(api.calls[0].name, 'sendPhoto', 'ورود با چارت');
+  assert.ok(isPng(api.calls[0].args[1]));
+  assert.match(txt(api.calls[0]), /کاغذیِ روند.*ورود/s);
   await runner.runDaily(now);
   assert.equal(api.calls.length, 1, 'اجرای دوباره تکرار نمی‌سازد');
 
@@ -87,7 +93,7 @@ test('کاغذی: ورود یک بار، خروج با کلوزِ زیرِ EMA،
   assert.equal(pos.exitReason, 'ema');
   assert.equal(pos.exit, 80);
   assert.ok(pos.r < 0 && pos.r < pos.grossR, 'R ِ خالص با کارمزد');
-  assert.match(api.calls.at(-1).args[1], /خروج.*کلوز زیرِ EMA/s);
+  assert.match(txt(api.calls.at(-1)), /خروج.*کلوز زیرِ EMA/s);
   assert.ok(api.calls.every((c) => c.args[0] === '111'), 'فقط ادمین');
 });
 
@@ -102,8 +108,9 @@ test('زنده: هشدار ← انتشار با قیمتِ لحظه ← است�
   const series = bars(today - DAY);
   const { api, runner, data } = setup('live', series);
   await runner.runDaily(today + 600_000);
-  const alertMsg = api.calls.find((c) => c.args[2]?.buttons);
+  const alertMsg = api.calls.find((c) => c.name === 'sendMessage' && c.args[2]?.buttons);
   assert.ok(alertMsg, 'هشدار با دکمه');
+  assert.ok(api.calls.some((c) => c.name === 'sendPhoto' && c.args[0] === '111' && /چارتِ روزانه/.test(c.args[2])), 'چارت پیش از هشدار');
   const id = alertMsg.args[2].buttons[0][0].callback_data.split(':')[1];
   assert.ok(store.trend().book.TEST, 'دفترِ کاغذی هم ثبت کرد');
 
@@ -120,14 +127,15 @@ test('زنده: هشدار ← انتشار با قیمتِ لحظه ← است�
   }
   const post = api.calls.find((c) => c.args[0] === '@chan');
   assert.ok(post, 'پیام در کانال');
-  assert.match(post.args[1], /سیگنالِ روند.*95\.50.*EMA50/s);
+  assert.equal(post.name, 'sendPhoto', 'سیگنالِ کانال با چارت');
+  assert.match(txt(post), /سیگنالِ روند.*95\.50.*EMA50/s);
   const sig = store.signals().find((s) => s.kind === 'trend');
   assert.equal(sig.entry, 95.5);
   assert.equal(store.trend().alerts[id].status, 'published');
 
   // دوباره زدن: باز نیست
   await runner.decide({ id: 'cb2', from: { id: 111 } }, true, id);
-  assert.match(api.calls.at(-1).args[1], /باز نیست/);
+  assert.match(txt(api.calls.at(-1)), /باز نیست/);
 
   // استاپ فقط با کندلِ ۵ دقیقه بعد از انتشار
   assert.deepEqual(stopStep(sig, [{ t: sig.lastT - 300_000, l: 1 }]), [], 'کندلِ پیش از انتشار حساب نیست');
@@ -141,8 +149,48 @@ test('زنده: هشدار ← انتشار با قیمتِ لحظه ← است�
   assert.equal(closed.outcome, 'ema');
   assert.ok(Math.abs(closed.realized - (80 - 95.5) / closed.risk) < 1e-9);
   const exitPost = api.calls.filter((c) => c.args[0] === '@chan').at(-1);
-  assert.match(exitPost.args[1], /خروج/);
-  assert.equal(exitPost.args[2].replyTo, closed.channelMsgId, "در جوابِ همان پیامِ سیگنال");
+  assert.match(txt(exitPost), /خروج/);
+  assert.equal(opts(exitPost).replyTo, closed.channelMsgId, 'در جوابِ همان پیامِ سیگنال');
+  assert.equal(closed.entryBarT, series.at(-1).t, 'کندلِ ورود برای چارت ذخیره شد');
+});
+
+test('زنده: عکس به کانال نرفت ← همان سیگنال بی‌عکس منتشر می‌شود', async () => {
+  const { api, runner } = setup('live', bars(today - DAY));
+  api.sendPhoto = async () => { throw new Error('upload failed'); };
+  await runner.runDaily(today + 600_000);
+  const alertMsg = api.calls.find((c) => c.name === 'sendMessage' && c.args[2]?.buttons);
+  const id = alertMsg.args[2].buttons[0][0].callback_data.split(':')[1];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const t = Math.floor(Date.now() / 300_000) * 300_000 - 600_000;
+    return new Response(JSON.stringify([[t, '95', '95.6', '95', '95.5', '1']]), { status: 200 });
+  };
+  try {
+    await runner.decide({ id: 'cb1', from: { id: 111 } }, true, id);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const post = api.calls.find((c) => c.args[0] === '@chan');
+  assert.equal(post?.name, 'sendMessage');
+  assert.match(post.args[1], /سیگنالِ روند/);
+  assert.equal(store.trend().alerts[id].status, 'published');
+});
+
+test('چارتِ پنل: در حالتِ خاموش هم؛ پوزیشنِ قاعده‌ای و معامله‌های گذشته روی تصویر', async () => {
+  const series = bars(today - DAY);
+  const { runner } = setup('off', series);
+  const { png, caption } = await runner.chart({ id: 'TESTUSDT', base: 'TEST' });
+  assert.ok(isPng(png));
+  assert.match(caption, /ورودِ تازه.*طبقِ قاعده/s, 'کلوزِ آخر تقاطع است ← ورودِ تازه طبقِ قاعده');
+
+  const { buildTrendSvg } = await import('../src/chart/trendChart.js');
+  const { replay, TREND_DEFAULTS } = await import('../src/strategy/trend.js');
+  const down = [...series, { t: today, o: 94, h: 95, l: 78, c: 80, v: 1 }];
+  const all = replay(down, TREND_DEFAULTS);
+  assert.equal(all.at(-1).exitReason, 'ema');
+  const svg = buildTrendSvg({ bars: down, trades: all, open: null, meta: { pretty: 'TEST/USDT', exchange: 'Binance' } });
+  assert.match(svg, /EXIT · below EMA 50/);
+  assert.match(svg, /Rule trades on chart: 1 /);
 });
 
 test('stopStep: حد ضرر با کندلِ ۵ دقیقه', () => {

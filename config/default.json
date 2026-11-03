@@ -103,7 +103,7 @@
     "stopAtr": 3,
     "atrPeriod": 14,
     "minBars": 211,
-    "candles": 300,
+    "candles": 500,
     "runAfterMinutes": 5,
     "alertTtlHours": 16,
     "maxDriftAtr": 0.5,

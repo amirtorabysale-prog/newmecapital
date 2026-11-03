@@ -18,7 +18,8 @@
 
 import { randomBytes } from 'node:crypto';
 import { fetchCandles, fetchFrom } from './exchanges/index.js';
-import { DAY, TREND_DEFAULTS, utcAligned, indicators, evaluate, openPosition, advance, closePosition } from './strategy/trend.js';
+import { DAY, TREND_DEFAULTS, utcAligned, indicators, evaluate, openPosition, advance, closePosition, replay } from './strategy/trend.js';
+import { renderTrendChart, state as chartState } from './chart/trendChart.js';
 import { ruleExit } from './tracker.js';
 import { store } from './store.js';
 import * as M from './messages.js';
@@ -28,6 +29,9 @@ export const TREND_MODES = ['off', 'paper', 'live'];
 /** ورود روی کلوزی که بیش از این کهنه است گرفته نمی‌شود */
 const STALE_MS = 36 * 3_600_000;
 const CLOSED_KEEP = 1000;
+const CAPTION_MAX = 1024;
+/** طولِ متنِ دیده‌شده در تلگرام (بی‌تگ) — سقفِ کپشن روی همین است */
+const visible = (html) => html.replace(/<[^>]+>/g, '').replace(/&(lt|gt|amp|quot);/g, '_').length;
 
 export const trendParams = (cfg) => ({ ...TREND_DEFAULTS, ...cfg.trend });
 
@@ -58,6 +62,63 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
     .then((m) => ({ chat, id: m.message_id }))
     .catch((e) => { log.warn('[trend]', e.message); return null; })))
     .then((xs) => xs.filter(Boolean));
+  const photoToAdmins = (png, caption) => Promise.all(adminIds().map((chat) => Promise.resolve().then(() => api.sendPhoto(chat, png, caption))
+    .catch((e) => { log.warn('[trend] عکس:', e.message); return null; })));
+
+  /** پیام به ادمین‌ها، با چارت اگر ساخته شد. چارتِ خراب هیچ‌وقت جلوی پیام را نمی‌گیرد. */
+  async function notifyAdmins(text, png) {
+    if (png && visible(text) <= CAPTION_MAX) {
+      const sent = await photoToAdmins(png, text);
+      if (sent.every(Boolean)) return;
+    }
+    await toAdmins(text);
+  }
+
+  /**
+   * پوزیشنِ بازِ این نماد برای چارت: سیگنالِ منتشرشده، بعد دفترِ کاغذی، بعد
+   * خودِ قاعده (replay) — وقتی بات خاموش بوده و چیزی ثبت نکرده.
+   */
+  function openFor(item, tail) {
+    const sig = store.signals().find((x) => x.kind === 'trend' && x.status === 'open' && x.symbol === item.id);
+    if (sig) return { entry: sig.entry, stop: sig.sl, entryBarT: sig.entryBarT ?? sig.dailyT, source: 'live' };
+    const pos = T().book[item.base];
+    if (pos) return { entry: pos.entry, stop: pos.stop, entryBarT: pos.entryBarT, source: 'paper' };
+    if (tail?.exitReason === 'end') return { entry: tail.entry, stop: tail.stop, entryBarT: tail.entryBarT, source: 'rule' };
+    return null;
+  }
+
+  /**
+   * @param override  پوزیشنی که باید کشیده شود (undefined ← خودش پیدا می‌کند، null ← هیچ)
+   * @returns {{ png: Buffer|null, open, trades, ev }}
+   */
+  function drawChart(item, data, override) {
+    const p = trendParams(cfg);
+    const all = replay(data.candles, p);
+    const trades = all.filter((t) => t.exitReason !== 'end');
+    const open = override === undefined ? openFor(item, all.at(-1)) : override;
+    let png = null;
+    try {
+      png = renderTrendChart({ bars: data.candles, p, trades, open, meta: { pretty: data.pretty, exchange: data.exchange, watermark: cfg.chart?.watermark } });
+    } catch (e) {
+      log.warn('[trend] چارت ساخته نشد:', e.message);
+    }
+    return { png, open, trades, ev: evaluate(data.candles, p) };
+  }
+
+  /** چارت و توضیحِ یک نماد، برای پنل — در هر حالتی، حتی خاموش */
+  async function chart(item) {
+    const data = await fetchDailyFn(item, cfg);
+    const p = trendParams(cfg);
+    const d = drawChart(item, data);
+    if (!d.png) throw new Error('چارت ساخته نشد');
+    const st = chartState({ open: d.open, ev: d.ev, last: data.candles.at(-1), p });
+    const viewFrom = (data.candles.at(-240) ?? data.candles[0]).t;
+    const shown = d.trades.filter((t) => t.exitBarT >= viewFrom);
+    return {
+      png: d.png,
+      caption: M.trendChartCaption({ pretty: data.pretty, exchange: data.exchange, ev: d.ev, open: d.open, state: st.key, shown, lastExit: d.trades.at(-1)?.exitReason, emaPeriod: p.emaPeriod }),
+    };
+  }
 
   /**
    * یک دورِ روزانه. @returns خلاصه‌ی ردیف‌ها، یا null اگر خاموش/در حالِ اجرا
@@ -82,8 +143,8 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
         rows.push(ev.ok
           ? { base: item.base, id: item.id, pretty: data.pretty, exchange: data.exchange, close: ev.close, ema: ev.ema, distPct: ev.distPct, above: ev.above, t: ev.t }
           : { base: item.base, id: item.id, pretty: data.pretty, error: ev.reason });
-        await paperExit(item, bars, ind, p);
-        await liveExits(item, bars, ind, p, now);
+        await paperExit(item, data, ind, p);
+        await liveExits(item, data, ind, p, now);
         if (!ev.ok) continue;
         const st = T();
         if ((st.seen[item.base] ?? -Infinity) >= ev.t) continue;
@@ -109,10 +170,11 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
     };
     T().book[item.base] = pos;
     store.save();
-    await toAdmins(M.trendPaperEntry(pos, p.emaPeriod));
+    await notifyAdmins(M.trendPaperEntry(pos, p.emaPeriod), drawChart(item, data, { ...pos, source: 'paper' }).png);
   }
 
-  async function paperExit(item, bars, ind, p) {
+  async function paperExit(item, data, ind, p) {
+    const bars = data.candles;
     const pos = T().book[item.base];
     if (!pos) return;
     const exit = advance(pos, bars, p, ind);
@@ -125,7 +187,7 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
     T().closed.push(pos);
     if (T().closed.length > CLOSED_KEEP) T().closed.splice(0, T().closed.length - CLOSED_KEEP);
     store.save();
-    await toAdmins(M.trendPaperExit(pos));
+    await notifyAdmins(M.trendPaperExit(pos), drawChart(item, data, null).png);
   }
 
   /**
@@ -133,7 +195,8 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
    * (کندلِ ۵ دقیقه، از لحظه‌ی انتشار) و bot.js پیش از این دور tracker را
    * اجرا می‌کند، تا سیگنالی که استاپش خورده این‌جا دیگر باز نباشد.
    */
-  async function liveExits(item, bars, ind, p, now) {
+  async function liveExits(item, data, ind, p, now) {
+    const bars = data.candles;
     for (const sig of store.signals()) {
       if (sig.kind !== 'trend' || sig.status !== 'open' || sig.symbol !== item.id) continue;
       for (let i = 1; i < bars.length; i++) {
@@ -142,7 +205,8 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
         sig.dailyT = k.t;
         if (Number.isFinite(ind.ema[i]) && k.c < ind.ema[i]) {
           const e = ruleExit(sig, k.c, Math.min(now, k.t + DAY));
-          await announce(sig, M.trendExitText(sig, e));
+          store.putSignal(sig);
+          await announce(sig, M.trendExitText(sig, e), drawChart(item, data, null).png);
           break;
         }
       }
@@ -150,11 +214,14 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
     }
   }
 
-  async function announce(sig, text) {
+  async function announce(sig, text, png) {
     if (channelId()) {
-      await api.sendMessage(channelId(), text, { replyTo: sig.channelMsgId }).catch((e) => log.error('[trend] کانال:', e.message));
+      const opts = { replyTo: sig.channelMsgId };
+      const sent = png && await Promise.resolve().then(() => api.sendPhoto(channelId(), png, text, opts))
+        .catch((e) => { log.warn('[trend] عکسِ کانال:', e.message); return null; });
+      if (!sent) await api.sendMessage(channelId(), text, opts).catch((e) => log.error('[trend] کانال:', e.message));
     }
-    await toAdmins(`📈 <b>${M.esc(sig.pretty)}</b>\n${text}`);
+    await notifyAdmins(`📈 <b>${M.esc(sig.pretty)}</b>\n${text}`, png);
   }
 
   // ───────────────────────────── هشدار و انتشار
@@ -165,6 +232,8 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
     const caption = M.trendAdminAlert({ pretty: data.pretty, exchange: data.exchange, ev, emaPeriod: p.emaPeriod, ttlHours: p.alertTtlHours });
     const preview = M.trendChannelSignal({ pretty: data.pretty, entry: ev.close, stop: ev.stop, ema: ev.ema, emaPeriod: p.emaPeriod });
     const text = `${caption}\n\n<b>پیش‌نمایشِ پیامِ کانال:</b>\n\n${preview}`;
+    const { png } = drawChart(item, data, { entry: ev.close, stop: ev.stop, entryBarT: ev.t, source: 'alert' });
+    if (png) await photoToAdmins(png, `📈 <b>${M.esc(data.pretty)}</b> · چارتِ روزانه با EMA${p.emaPeriod} و ورود/خروج‌های گذشته‌ی همین قاعده`);
     const messages = await toAdmins(text, { buttons: buttons(id) });
     T().alerts[id] = {
       id, status: 'pending', createdAt: Date.now(), base: item.base, symbol: item.id, pretty: data.pretty,
@@ -179,6 +248,19 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
   async function closeAlert(a, footer) {
     for (const m of a.messages || []) {
       await api.editText(m.chat, m.id, `${a.text}\n\n<b>${M.esc(footer)}</b>`).catch((e) => log.warn('[trend] ویرایش نشد:', e.message));
+    }
+  }
+
+  /** چارتِ پیامِ کانال با قیمتِ لحظه‌ی انتشار؛ هر خطایی ← بی‌عکس منتشر می‌شود */
+  async function publishChart(a, live) {
+    const item = { id: a.symbol, base: a.base };
+    try {
+      const data = await fetchDailyFn(item, cfg);
+      if (data.candles.at(-1).t !== a.ev.t) return null; // کندلِ دیگری بسته شده؛ چارت با پیام نمی‌خواند
+      return drawChart(item, data, { entry: live, stop: a.ev.stop, entryBarT: a.ev.t, source: 'live' }).png;
+    } catch (e) {
+      log.warn('[trend] چارتِ انتشار:', e.message);
+      return null;
     }
   }
 
@@ -214,12 +296,16 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
     await api.answer(cb.id, 'در حالِ انتشار…');
     try {
       const text = M.trendChannelSignal({ pretty: a.pretty, entry: live, stop: a.ev.stop, ema: a.ev.ema, emaPeriod: p.emaPeriod });
-      const msg = await api.sendMessage(channelId(), text);
+      const png = visible(text) <= CAPTION_MAX ? await publishChart(a, live) : null;
+      // عکس نرفت ← همان متن بی‌عکس؛ چارت هیچ‌وقت جلوی انتشار را نمی‌گیرد
+      const msg = (png && await Promise.resolve().then(() => api.sendPhoto(channelId(), png, text))
+        .catch((e) => { log.warn('[trend] عکسِ کانال:', e.message); return null; }))
+        || await api.sendMessage(channelId(), text);
       const now = Date.now();
       store.putSignal({
         id, kind: 'trend', symbol: a.symbol, pretty: a.pretty, exchangeKey: a.exchangeKey, exSymbol: a.exSymbol,
         direction: 'long', entry: live, sl: a.ev.stop, slNow: a.ev.stop, risk: live - a.ev.stop, tps: [], hits: 0, realized: 0,
-        status: 'open', publishedAt: now, lastT: now, expiresAt: null, dailyT: a.ev.t, emaPeriod: p.emaPeriod,
+        status: 'open', publishedAt: now, lastT: now, expiresAt: null, dailyT: a.ev.t, entryBarT: a.ev.t, emaPeriod: p.emaPeriod,
         channelMsgId: msg.message_id, events: [],
       });
       a.status = 'published';
@@ -248,7 +334,7 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
     };
   }
 
-  return { runDaily, decide, view, isRunning: () => running };
+  return { runDaily, decide, view, chart, isRunning: () => running };
 }
 
 /**

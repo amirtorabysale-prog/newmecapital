@@ -102,6 +102,7 @@ export function coin(s, base) {
   const inList = cfg.watchlist.some((w) => w.base === base);
   const buttons = [
     [b('🖼 تحلیل روی چارت', `act:chart:${base}`), b('🔄 تحلیلِ دوباره', `act:re:${base}`)],
+    [b('🧭 چارتِ روندِ روزانه (EMA50)', `act:tchart:${base}`)],
   ];
   if (inList) buttons.push([b('🗑 حذف از واچ‌لیست', `act:rm?:${base}`)]);
   buttons.push([b('🔙 نتایج', 'nav:res'), b('📋 واچ‌لیست', 'nav:wl'), HOME]);
@@ -531,6 +532,10 @@ export function trend(s, canManage) {
         : `${r.above ? '🟢' : '⚪️'} ${esc(r.pretty)} ${r.distPct >= 0 ? '+' : ''}${r.distPct.toFixed(1)}٪ نسبت به EMA`);
     }
   }
+  const wl = s.cfg?.watchlist || [];
+  if (wl.length) lines.push('', '🖼 <b>چارت:</b> روی هر ارز بزن — کندلِ روزانه، EMA، و ورود/خروج‌های گذشته‌ی همین قاعده.');
+  const chartRows = [];
+  for (let i = 0; i < wl.length; i += 4) chartRows.push(wl.slice(i, i + 4).map((w) => b(`🖼 ${w.base}`, `act:tchart:${w.base}`)));
   const modeRow = canManage
     ? [Object.entries(TREND_MODE_FA).map(([k, v]) => b(`${check(k === t.mode)}${v}`, `act:tmode:${k}`))]
     : [];
@@ -538,6 +543,7 @@ export function trend(s, canManage) {
     text: lines.join('\n'),
     buttons: [
       ...modeRow,
+      ...chartRows,
       t.mode !== 'off' ? [b('🔄 بررسیِ همین الان', 'act:trun')] : null,
       [b('🔄 به‌روز کن', 'nav:trend'), HOME],
     ].filter(Boolean),

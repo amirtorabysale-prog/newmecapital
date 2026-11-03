@@ -17,7 +17,7 @@ import { CONDITIONS } from '../strategy/params.js';
 import { price as fmt, utc } from '../format.js';
 import { TF_MS } from '../exchanges/index.js';
 
-const C = {
+export const C = {
   bg: '#131722',
   panel: '#161a25',
   grid: '#232733',
@@ -47,7 +47,7 @@ const RIGHT_BARS = 16;
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-function niceStep(span, count) {
+export function niceStep(span, count) {
   const raw = span / count;
   const mag = 10 ** Math.floor(Math.log10(raw));
   const n = raw / mag;
@@ -296,24 +296,24 @@ export function buildChartSvg({ candles, result, meta, minBars = 70 }) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${out.join('')}</svg>`;
 }
 
-function text(x, y, s, { size = 12, fill = C.text, weight = 400, anchor = 'start', opacity = 1 } = {}) {
+export function text(x, y, s, { size = 12, fill = C.text, weight = 400, anchor = 'start', opacity = 1 } = {}) {
   return `<text x="${x}" y="${y}" font-family="Vazirmatn" font-size="${size}" font-weight="${weight}"`
     + ` fill="${fill}" text-anchor="${anchor}" opacity="${opacity}">${esc(s)}</text>`;
 }
 
-function label(x, y, s, col, anchor, size = 12) {
+export function label(x, y, s, col, anchor, size = 12) {
   const w = s.length * size * 0.57 + 14;
   const bx = anchor === 'middle' ? x - w / 2 : anchor === 'end' ? x - w : x;
   return `<rect x="${bx}" y="${y - 14}" width="${w}" height="20" rx="4" fill="${C.bg}" opacity="0.85" stroke="${col}" stroke-width="1"/>`
     + text(bx + w / 2, y + 1, s, { size, fill: col, weight: 700, anchor: 'middle' });
 }
 
-function axisTag(x, y, s, col) {
-  return `<rect x="${x + 2}" y="${y - 10}" width="${PAD_R - 6}" height="20" rx="3" fill="${col}"/>`
+export function axisTag(x, y, s, col, padR = PAD_R) {
+  return `<rect x="${x + 2}" y="${y - 10}" width="${padR - 6}" height="20" rx="3" fill="${col}"/>`
     + text(x + 8, y + 4, s, { size: 12, fill: '#0d0f14', weight: 700 });
 }
 
-function rectBetween(x1, x2, ya, yb, fill, opacity) {
+export function rectBetween(x1, x2, ya, yb, fill, opacity) {
   return `<rect x="${x1}" y="${Math.min(ya, yb)}" width="${Math.max(0, x2 - x1)}" height="${Math.abs(yb - ya)}" fill="${fill}" opacity="${opacity}"/>`;
 }
 
@@ -327,8 +327,12 @@ export function checkFonts() {
 
 /** @returns {Buffer} PNG */
 export function renderChart(args) {
+  return svgToPng(buildChartSvg(args));
+}
+
+/** @returns {Buffer} PNG */
+export function svgToPng(svg) {
   checkFonts();
-  const svg = buildChartSvg(args);
   return new Resvg(svg, {
     font: { fontFiles: FONT_FILES, loadSystemFonts: false, defaultFontFamily: 'Vazirmatn' },
     fitTo: { mode: 'width', value: 1280 },

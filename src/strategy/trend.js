@@ -110,7 +110,7 @@ export function closePosition(pos, exit, p = TREND_DEFAULTS) {
 
 /**
  * کلِ سری را مثلِ موتورِ پژوهش اجرا می‌کند — برای آزمونِ برابری و بک‌تست.
- * @returns معامله‌ها: { entry, exit, risk, r, entryBarT, exitBarT, reason }
+ * @returns معامله‌ها: { entry, exit, risk, r, entryBarT, exitBarT, exitReason } — آخری با exitReason 'end' یعنی هنوز باز
  */
 export function replay(bars, p = TREND_DEFAULTS) {
   const ind = indicators(bars, p);

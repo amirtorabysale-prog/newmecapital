@@ -396,6 +396,37 @@ export function trendPaperEntry(pos, emaPeriod) {
     + ` (کلوز بالای EMA${emaPeriod})\nحد ضررِ اضطراری <code>${P(pos.stop)}</code> (−${((pos.risk / pos.entry) * 100).toFixed(1)}٪)`;
 }
 
+/** کپشنِ چارتِ روند از پنل (src/chart/trendChart.js) */
+export function trendChartCaption({ pretty, exchange, ev, open, state, shown, lastExit, emaPeriod }) {
+  const ref = ev.ok ? ev.close : open?.entry;
+  const P = (v) => price(v, ref);
+  const lines = [`🧭 <b>${esc(pretty)} — روندِ روزانه</b> · ${esc(exchange)}`];
+  if (ev.ok) {
+    lines.push(`کلوزِ ${utc(ev.t).slice(0, 10)}: <code>${P(ev.close)}</code> · EMA${emaPeriod} <code>${P(ev.ema)}</code> (${ev.distPct >= 0 ? '+' : ''}${ev.distPct.toFixed(1)}٪)`);
+  }
+  const src = { live: 'سیگنالِ منتشرشده', paper: 'دفترِ کاغذی', rule: 'طبقِ قاعده — بات این را ثبت نکرده، چون روند خاموش بوده', alert: 'هشدارِ امروز' };
+  if (open) {
+    const pct = ((open.entry - open.stop) / open.entry) * 100;
+    lines.push('', state === 'entry' ? '🟢 <b>ورودِ تازه</b> روی همین کلوز' : `🟢 <b>در روند</b> از کلوزِ ${utc(open.entryBarT).slice(0, 10)}`,
+      `ورود <code>${P(open.entry)}</code> · حد ضررِ اضطراری <code>${P(open.stop)}</code> (−${pct.toFixed(1)}٪)`,
+      `خروج با اولین کلوزِ روزانه زیرِ EMA${emaPeriod}. منبع: ${src[open.source] || '—'}`);
+  } else if (state === 'exit') {
+    lines.push('', `🔴 <b>خروج:</b> همین کلوز زیرِ EMA${emaPeriod} بسته شد.`);
+  } else if (ev.ok && ev.above) {
+    const why = lastExit === 'stop' ? 'ورودِ قبلی با حد ضررِ اضطراری بسته شد' : 'تقاطع پیش از جمع شدنِ تاریخچه‌ی کافی بود';
+    lines.push('', `⚪️ بالای EMA است، ولی پوزیشنِ قاعده‌ای باز نیست (${why}). ورودِ بعدی فقط با یک تقاطعِ تازه از زیر به بالا.`);
+  } else {
+    lines.push('', `⚪️ <b>منتظر:</b> ورود وقتی است که کلوزِ روزانه بالای EMA${emaPeriod} برود.`);
+  }
+  if (shown.length) {
+    const wins = shown.filter((t) => t.r > 0).length;
+    const sum = shown.reduce((s, t) => s + t.r, 0);
+    lines.push('', `روی چارت: ${shown.length} معامله‌ی بسته‌ی همین قاعده · برنده ${wins} · جمع <b>${signR(sum)}</b> (با کارمزد).`);
+  }
+  lines.push('▲ سبز = ورود · ▼ = خروج با نتیجه به R · خطِ نارنجی = EMA. این بک‌تستِ همین نماد است، نه پیش‌بینی.');
+  return lines.join('\n');
+}
+
 export function trendPaperExit(pos) {
   const why = pos.exitReason === 'stop' ? 'حد ضررِ اضطراری' : 'کلوز زیرِ EMA';
   return `📝 <b>کاغذیِ روند</b> · خروج <b>${esc(pos.pretty)}</b> در <code>${price(pos.exit, pos.entry)}</code> — ${why}`

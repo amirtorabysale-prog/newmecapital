@@ -53,8 +53,9 @@ export function createApi(token) {
       chat_id: chatId, text, parse_mode: 'HTML', link_preview_options: { is_disabled: true },
       reply_markup: kb(buttons), reply_parameters: replyTo ? { message_id: replyTo, allow_sending_without_reply: true } : undefined,
     }),
-    sendPhoto: (chatId, photo, caption, { buttons } = {}) => call('sendPhoto', {
+    sendPhoto: (chatId, photo, caption, { buttons, replyTo } = {}) => call('sendPhoto', {
       chat_id: chatId, photo, caption, parse_mode: 'HTML', reply_markup: kb(buttons),
+      reply_parameters: replyTo ? { message_id: replyTo, allow_sending_without_reply: true } : undefined,
     }, { timeout: 60_000 }),
     editCaption: (chatId, messageId, caption, buttons) => call('editMessageCaption', {
       chat_id: chatId, message_id: messageId, caption, parse_mode: 'HTML', reply_markup: kb(buttons || []),
