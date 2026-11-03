@@ -143,7 +143,11 @@ export async function fetchFrom(exchangeKey, symbol, tf, limit) {
   return closedOnly(await ad.fetch(symbol, tf, limit), tf);
 }
 
-export async function fetchCandles(item, { exchanges, timeframe, candles: limit, minCandles = 150 }) {
+/**
+ * @param accept (rows) ← null یا دلیلِ رد؛ مثلاً روند‌گیری کندلِ روزانه‌ای را که
+ *   روی روزِ UTC نیست (LBank و Bitget ۱۶:۰۰ UTC می‌بندند) رد می‌کند و می‌رود سراغِ بعدی.
+ */
+export async function fetchCandles(item, { exchanges, timeframe, candles: limit, minCandles = 150, accept }) {
   const tried = [];
   for (const name of exchanges) {
     const ad = ADAPTERS[name];
@@ -153,6 +157,11 @@ export async function fetchCandles(item, { exchanges, timeframe, candles: limit,
       const rows = closedOnly(await ad.fetch(symbol, timeframe, limit), timeframe).slice(-limit);
       if (rows.length < minCandles) {
         tried.push({ exchange: ad.label, error: `فقط ${rows.length} کندل` });
+        continue;
+      }
+      const why = accept?.(rows);
+      if (why) {
+        tried.push({ exchange: ad.label, error: why });
         continue;
       }
       return { candles: rows, exchange: ad.label, exchangeKey: name, symbol, pretty: ad.pretty(symbol), tried };

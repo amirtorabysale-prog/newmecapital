@@ -29,6 +29,11 @@ function load() {
   state.sent ??= {};
   state.signals ??= {};
   state.updateOffset ??= 0;
+  state.trend ??= {};
+  state.trend.book ??= {};
+  state.trend.closed ??= [];
+  state.trend.seen ??= {};
+  state.trend.alerts ??= {};
   return state;
 }
 
@@ -89,6 +94,9 @@ export const store = {
       return null;
     }
   },
+
+  /** دفترِ روند‌گیری: پوزیشن‌های کاغذی، هشدارهای انتشار، آخرین کندلِ دیده‌شده‌ی هر نماد */
+  trend: () => load().trend,
 
   signals: () => Object.values(load().signals),
   putSignal(sig) {

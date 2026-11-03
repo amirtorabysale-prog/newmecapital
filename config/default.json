@@ -97,6 +97,20 @@
     }
   },
 
+  "trend": {
+    "mode": "off",
+    "emaPeriod": 50,
+    "stopAtr": 3,
+    "atrPeriod": 14,
+    "minBars": 211,
+    "candles": 300,
+    "runAfterMinutes": 5,
+    "alertTtlHours": 16,
+    "maxDriftAtr": 0.5,
+    "feePct": 0.1,
+    "slippagePct": 0.05
+  },
+
   "chart": {
     "minBars": 70,
     "watermark": ""

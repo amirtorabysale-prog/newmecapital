@@ -14,6 +14,7 @@
 import { CONDITIONS, PARAMS, paramById, getPath, formatValue } from '../strategy/params.js';
 import { esc, strategyText, coinReport, rowIcon, verdict, TF_FA, signR } from '../messages.js';
 import { summarize } from '../tracker.js';
+import { bookStats } from '../strategy/trend.js';
 import { price } from '../format.js';
 import { SCAN_INTERVALS, TIMEFRAMES } from '../config.js';
 import { utc } from '../format.js';
@@ -47,7 +48,7 @@ export function home(s) {
     buttons: [
       [b('🔎 اسکنِ همین الان', 'act:scan')],
       [b('📊 نتایجِ آخرین اسکن', 'nav:res'), b('📋 واچ‌لیست', 'nav:wl')],
-      [b('📈 کارنامه‌ی سیگنال‌ها', 'nav:perf')],
+      [b('📈 کارنامه‌ی سیگنال‌ها', 'nav:perf'), b(`🧭 روندِ روزانه${s.trend ? ` (${TREND_MODE_FA[s.trend.mode]})` : ''}`, 'nav:trend')],
       [b('🧠 استراتژی', 'nav:st'), b('⚙️ تنظیمات', 'nav:set')],
       liveBtn(s.webApp),
       freeBtn(s.webApp),
@@ -372,7 +373,8 @@ export function confirmAdminRemove(s, id) {
 const OUTCOME = { tp_all: '🏆 همه‌ی تارگت‌ها', sl: '🛑 حد ضرر', be: '⚪️ سر‌به‌سر', expired: '⏱ پایانِ زمان' };
 
 export function performance(s) {
-  const { signals } = s;
+  // سیگنال‌های روند تارگت ندارند و کارنامه‌ی خودشان را در صفحه‌ی روند دارند
+  const signals = s.signals.filter((x) => x.kind !== 'trend');
   const st = summarize(signals);
   const ago = (t) => {
     const h = (Date.now() - t) / 3_600_000;
@@ -483,5 +485,61 @@ export function channelPrompt(note = '') {
       note ? `\n${note}` : '',
     ].join('\n'),
     buttons: [[b('🔙 لغو', 'nav:chan')]],
+  };
+}
+
+// ───────────────────────────── روند‌گیریِ روزانه
+const TREND_MODE_FA = { off: 'خاموش', paper: 'کاغذی', live: 'زنده' };
+
+export function trend(s, canManage) {
+  const t = s.trend;
+  const ago = (x) => `${Math.max(0, Math.round((Date.now() - x) / 86_400_000))} روز`;
+  const lines = [
+    `🧭 <b>روند‌گیریِ روزانه — EMA${t.emaPeriod}</b> · حالت: <b>${TREND_MODE_FA[t.mode]}</b>`,
+    '',
+    'ورود: کلوزِ روزانه از زیر به بالای EMA · خروج: اولین کلوزِ زیرِ آن · حد ضررِ اضطراری ۳ ATR.',
+    'وین‌ریتِ تاریخی حدودِ ۲۰٪؛ سود از چند روندِ بلند می‌آید. جزئیات: docs/research/',
+    '',
+    {
+      off: '⏸ خاموش — هیچ چیز ثبت یا فرستاده نمی‌شود.',
+      paper: '📝 کاغذی — ورود و خروج‌ها خودکار ثبت و فقط به ادمین‌ها خبر داده می‌شود.',
+      live: '🟢 زنده — دفترِ کاغذی ادامه دارد، و هر ورود هشدارِ «انتشار» برای کانال دارد.',
+    }[t.mode],
+  ];
+  if (t.mode !== 'off' && t.nextAt) lines.push(`بررسیِ بعدی: ${utc(t.nextAt)} UTC`);
+
+  const paper = bookStats(t.closed);
+  lines.push('', `📝 <b>دفترِ کاغذی:</b> باز ${t.open.length} · بسته ${paper.n}`);
+  if (paper.n) {
+    lines.push(`برنده ${paper.wins} (${Math.round(paper.winRate * 100)}٪) · جمع <b>${signR(paper.totalR)}</b> · میانگین ${signR(paper.avgR)} (با کارمزد)`);
+  }
+  for (const p of t.open.slice(0, 10)) lines.push(`• ${esc(p.pretty)} از ${price(p.entry)} · ${ago(p.entryBarT + 86_400_000)}`);
+
+  const live = t.live;
+  if (live.length || t.mode === 'live') {
+    const closed = live.filter((x) => x.status === 'closed').map((x) => ({ r: x.realized }));
+    const ls = bookStats(closed);
+    lines.push('', `📢 <b>منتشرشده:</b> باز ${live.length - closed.length} · بسته ${ls.n}${ls.n ? ` · جمع ${signR(ls.totalR)}` : ''}`);
+    if (t.pending.length) lines.push(`🔔 در انتظارِ تأیید: ${t.pending.length}`);
+  }
+
+  if (t.last) {
+    lines.push('', `<b>آخرین بررسی</b> (${utc(t.last.at)} UTC):`);
+    for (const r of t.last.rows) {
+      lines.push(r.error
+        ? `⚠️ ${esc(r.id)}: ${esc(r.error).slice(0, 90)}`
+        : `${r.above ? '🟢' : '⚪️'} ${esc(r.pretty)} ${r.distPct >= 0 ? '+' : ''}${r.distPct.toFixed(1)}٪ نسبت به EMA`);
+    }
+  }
+  const modeRow = canManage
+    ? [Object.entries(TREND_MODE_FA).map(([k, v]) => b(`${check(k === t.mode)}${v}`, `act:tmode:${k}`))]
+    : [];
+  return {
+    text: lines.join('\n'),
+    buttons: [
+      ...modeRow,
+      t.mode !== 'off' ? [b('🔄 بررسیِ همین الان', 'act:trun')] : null,
+      [b('🔄 به‌روز کن', 'nav:trend'), HOME],
+    ].filter(Boolean),
   };
 }
