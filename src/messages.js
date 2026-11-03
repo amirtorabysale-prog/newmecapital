@@ -347,3 +347,57 @@ export function watchAlert({ pretty, kind, hit, close, check }) {
     + `سطح ${price(hit.price)} · بسته‌شدن ${price(close, hit.price)}\n`
     + `قیمت ${side}\n\n${rows.join('\n')}`;
 }
+
+// ───────────────────────────── روند‌گیریِ روزانه (src/trendRunner.js)
+// کلوزِ روزانه ۰۰:۰۰ UTC است — ایران از ۲۰۲۲ ساعتِ تابستانی ندارد، پس همیشه ۳:۳۰ بامداد
+const DAILY_CLOSE_FA = 'کلوزِ روزانه (۰۰:۰۰ UTC، ۳:۳۰ بامدادِ تهران)';
+const days = (a, b) => Math.max(1, Math.round((b - a) / 86_400_000));
+
+/** درصدِ سرمایه برای ریسکِ ۱٪ تا حد ضرر */
+export const sizeFor1Pct = (entry, stop) => 100 / (((entry - stop) / entry) * 100);
+
+export function trendChannelSignal({ pretty, entry, stop, ema, emaPeriod }) {
+  const P = (v) => price(v, entry);
+  const stopPct = ((entry - stop) / entry) * 100;
+  return [
+    `🟢 <b>سیگنالِ روند (روزانه) | ${esc(pretty)}</b>`,
+    '',
+    `📍 ورود: <code>${P(entry)}</code>`,
+    `🛑 حد ضررِ اضطراری: <code>${P(stop)}</code> (−${stopPct.toFixed(1)}٪)`,
+    `🚪 خروج: اولین ${DAILY_CLOSE_FA} زیرِ EMA${emaPeriod} — الان <code>${P(ema)}</code>. بات همین‌جا خبر می‌دهد.`,
+    '🎯 تارگتِ ثابت ندارد؛ تا وقتی کلوزِ روزانه بالای EMA است در معامله می‌مانیم.',
+    '',
+    `⚖️ حجم: با ریسکِ ۱٪ سرمایه تا حد ضرر، حدودِ <b>${sizeFor1Pct(entry, stop).toFixed(1)}٪</b> سرمایه (با ۰.۵٪، نصفِ آن).`,
+    'ℹ️ بیشترِ سیگنال‌های این روش با ضررِ کوچک بسته می‌شوند (وین‌ریتِ تاریخی حدودِ ۲۰٪) و سود از چند روندِ بلند می‌آید؛'
+      + ' جا انداختنِ سیگنال یعنی شاید همان روندِ بزرگ از دست برود. این پیام توصیه‌ی مالی نیست.',
+  ].join('\n');
+}
+
+export function trendAdminAlert({ pretty, exchange, ev, emaPeriod, ttlHours }) {
+  const P = (v) => price(v, ev.close);
+  return [
+    `📈 <b>روند: ${esc(pretty)} بالای EMA${emaPeriod} بسته شد</b>`,
+    `کلوزِ ${utc(ev.t).slice(0, 10)}: <code>${P(ev.close)}</code> · EMA${emaPeriod} <code>${P(ev.ema)}</code> (+${ev.distPct.toFixed(1)}٪) · ${esc(exchange)}`,
+    `حد ضررِ اضطراری: <code>${P(ev.stop)}</code> (−${ev.stopPct.toFixed(1)}٪، ۳ ATR ِ روزانه)`,
+    '',
+    `«انتشار» ورود را با <b>قیمتِ همان لحظه</b> می‌گذارد. تا ${ttlHours} ساعت بعد از کلوز معتبر است، به شرطِ این‌که قیمت بیش از نیم ATR از کلوز دور نشده باشد.`,
+  ].join('\n');
+}
+
+export function trendExitText(sig, e) {
+  const P = (v) => price(v, sig.entry);
+  return `🚪 <b>خروج: ${DAILY_CLOSE_FA} زیرِ EMA${sig.emaPeriod}</b> — <code>${P(e.price)}</code>`
+    + ` · نتیجه ${signR(e.r)} · ${days(sig.publishedAt, e.t)} روز`;
+}
+
+export function trendPaperEntry(pos, emaPeriod) {
+  const P = (v) => price(v, pos.entry);
+  return `📝 <b>کاغذیِ روند</b> · ورود <b>${esc(pos.pretty)}</b> در <code>${P(pos.entry)}</code>`
+    + ` (کلوز بالای EMA${emaPeriod})\nحد ضررِ اضطراری <code>${P(pos.stop)}</code> (−${((pos.risk / pos.entry) * 100).toFixed(1)}٪)`;
+}
+
+export function trendPaperExit(pos) {
+  const why = pos.exitReason === 'stop' ? 'حد ضررِ اضطراری' : 'کلوز زیرِ EMA';
+  return `📝 <b>کاغذیِ روند</b> · خروج <b>${esc(pos.pretty)}</b> در <code>${price(pos.exit, pos.entry)}</code> — ${why}`
+    + `\nنتیجه با کارمزد ${signR(pos.r)} · ${days(pos.entryBarT + 86_400_000, pos.closedAt)} روز`;
+}

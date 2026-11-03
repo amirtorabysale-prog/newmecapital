@@ -20,7 +20,8 @@ import { fetchFrom, fetchCandles } from '../exchanges/index.js';
 import { drawings } from '../drawings.js';
 import { KINDS, freshTouches, confirmAt } from '../strategy/watch.js';
 import { atr } from '../strategy/indicators.js';
-import { TRACK_TF, MAX_5M, catchUp, needsCatchUp, newSignal, step } from '../tracker.js';
+import { TRACK_TF, MAX_5M, catchUp, needsCatchUp, newSignal, step, stopStep } from '../tracker.js';
+import { createTrendRunner, nextRunAt, TREND_MODES } from '../trendRunner.js';
 import { applyEdits, validatePlan, hasEdits, checkLivePrice } from '../planEdit.js';
 import { renderChart } from '../chart/render.js';
 import { store, dataDir } from '../store.js';
@@ -61,6 +62,11 @@ export function createBot({ api, env, cfg, log = console }) {
     if (!channelId() && envChannel.error && env.channelId) channelStatus.error = `CHANNEL_ID: ${envChannel.error}`;
     return channelStatus;
   }
+  // روند‌گیریِ روزانه — src/trendRunner.js. پیش‌فرض خاموش (cfg.trend.mode)
+  const trend = createTrendRunner({ api, cfg, log, adminIds, channelId });
+  let trendTimer = null;
+  let nextTrendAt = null;
+
   let scanning = false;
   let timer = null;
   let nextScanAt = null;
@@ -84,6 +90,7 @@ export function createBot({ api, env, cfg, log = console }) {
     signals: store.signals(),
     channel: { id: channelId(), status: channelStatus, fromPanel: !!cfg.channel?.id },
     webApp: webAppUrl(),
+    trend: { ...trend.view(), nextAt: nextTrendAt },
   });
 
   // ───────────────────────────── زمان‌بندی
@@ -100,6 +107,25 @@ export function createBot({ api, env, cfg, log = console }) {
     }, nextScanAt - Date.now());
     // حلقه‌ی polling پروسه را زنده نگه می‌دارد؛ تایمر نباید (در تست‌ها پروسه را قفل می‌کرد)
     timer.unref?.();
+  }
+
+  /** هر روز چند دقیقه بعد از ۰۰:۰۰ UTC: اول tracker (تا استاپ‌های خورده ثبت شوند)، بعد روند */
+  function scheduleTrend() {
+    clearTimeout(trendTimer);
+    nextTrendAt = nextRunAt(cfg);
+    trendTimer = setTimeout(async () => {
+      await runTrendDaily();
+      scheduleTrend();
+    }, nextTrendAt - Date.now());
+    trendTimer.unref?.();
+  }
+
+  async function runTrendDaily() {
+    if (cfg.trend?.mode === 'off') return null;
+    // دورِ ۱۰ دقیقه‌ای اگر در جریان است، runTracker فوراً برمی‌گردد — صبر کن تمام شود
+    for (let i = 0; tracking && i < 120; i++) await new Promise((r) => setTimeout(r, 1000));
+    await runTracker().catch((e) => log.error('[track]', e));
+    return trend.runDaily().catch((e) => { log.error('[trend]', e); return null; });
   }
 
   async function analyzeItem(item) {
@@ -456,7 +482,7 @@ export function createBot({ api, env, cfg, log = console }) {
           log.warn(`[track] ${sig.pretty}: ${e.message}`);
           continue;
         }
-        const events = step(sig, candles, now);
+        const events = sig.kind === 'trend' ? stopStep(sig, candles) : step(sig, candles, now);
         store.putSignal(sig);
         for (const e of events) {
           const text = M.trackEventText(sig, e);
@@ -573,6 +599,7 @@ export function createBot({ api, env, cfg, log = console }) {
       case 'par': waiting.delete(String(chat)); return show(chat, msgId, UI.param(s, arg));
       case 'adm': return show(chat, msgId, UI.admins(s, isOwner(chat)));
       case 'perf': return show(chat, msgId, UI.performance(s));
+      case 'trend': return show(chat, msgId, UI.trend(s, isOwner(chat)));
       case 'chan':
         await show(chat, msgId, { text: '⏳ در حالِ بررسیِ کانال…', buttons: [] });
         await refreshChannel();
@@ -746,6 +773,24 @@ export function createBot({ api, env, cfg, log = console }) {
         return show(chat, msgId, UI.admins(s(), true));
       }
 
+      case 'tmode': {
+        // روشن کردنِ انتشار تصمیمِ مالک است، نه هر ادمین
+        if (!isOwner(cb.from.id)) return api.answer(cb.id, 'فقط مالک‌ها حالتِ روند را عوض می‌کنند.', true);
+        if (!TREND_MODES.includes(a1)) return api.answer(cb.id);
+        setParam(cfg, 'trend.mode', a1);
+        await api.answer(cb.id, { off: 'خاموش شد', paper: 'کاغذی: از کلوزِ بعدی ثبت می‌شود', live: 'زنده: هر ورود هشدارِ انتشار دارد' }[a1], a1 !== 'off');
+        return show(chat, msgId, UI.trend(s(), true));
+      }
+
+      case 'trun': {
+        if (cfg.trend?.mode === 'off') return api.answer(cb.id, 'روند خاموش است.', true);
+        if (trend.isRunning()) return api.answer(cb.id, 'همین الان در جریان است.', true);
+        await api.answer(cb.id, 'بررسیِ روند…');
+        await show(chat, msgId, { text: '⏳ در حالِ خواندنِ کندل‌های روزانه…', buttons: [] });
+        await runTrendDaily();
+        return show(chat, msgId, UI.trend(s(), isOwner(chat)));
+      }
+
       case 'close':
         await api.answer(cb.id);
         return api.deleteMessage(chat, msgId).catch(() => {});
@@ -898,6 +943,7 @@ export function createBot({ api, env, cfg, log = console }) {
     const [kind, ...rest] = data.split(':');
     if (kind === 'ok' || kind === 'no') return decide(cb, kind === 'ok', rest[0]);
     if (kind === 'ed') return onEditor(cb, rest[0], rest[1]);
+    if (kind === 'tok' || kind === 'tno') return trend.decide(cb, kind === 'tok', rest[0]);
     if (kind === 'nav') {
       await api.answer(cb.id);
       return navigate(chat, msgId, rest[0], rest[1]);
@@ -951,6 +997,14 @@ export function createBot({ api, env, cfg, log = console }) {
           + 'پیش از زدنِ دوباره‌ی «انتشار» کانال را نگاه کن؛ شاید پستِ تحلیل رفته باشد.').catch(() => {});
       }
     }
+    for (const a of Object.values(store.trend().alerts)) {
+      if (a.status !== 'publishing') continue;
+      a.status = 'pending';
+      store.save();
+      for (const o of owners) {
+        api.sendMessage(o, `⚠️ انتشارِ سیگنالِ روندِ <b>${M.esc(a.pretty)}</b> نیمه‌کاره ماند (ری‌استارتِ سرور). پیش از «انتشار»ِ دوباره کانال را نگاه کن.`).catch(() => {});
+      }
+    }
   }
 
   async function start() {
@@ -972,6 +1026,9 @@ export function createBot({ api, env, cfg, log = console }) {
     ]).catch(() => {});
     await recoverStuck();
     schedule();
+    scheduleTrend();
+    // کلوزی که وقتِ خاموشی گذشته: seen از تکرار جلوگیری می‌کند
+    setTimeout(() => runTrendDaily(), 60_000).unref?.();
     // پیگیری هر ۱۰ دقیقه — کندلِ ۵ دقیقه‌ای، پس دیرتر از ۱۵ دقیقه خبری نمی‌ماند
     trackTimer = setInterval(() => {
       runTracker().catch((e) => log.error('[track]', e));
@@ -999,7 +1056,7 @@ export function createBot({ api, env, cfg, log = console }) {
     for (const a of adminIds()) api.sendMessage(a, text).catch(() => {});
   }
 
-  return { start, runScan, runTracker, runWatch, commands, decide, schedule, onCallback, onMessage, state, isAdmin, onWebSave };
+  return { start, runScan, runTracker, runWatch, runTrendDaily, trend, commands, decide, schedule, onCallback, onMessage, state, isAdmin, onWebSave };
 }
 
 function withNote(screen, note) {

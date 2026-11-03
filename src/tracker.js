@@ -112,6 +112,37 @@ export function step(sig, candles, now = Date.now()) {
   return out;
 }
 
+/**
+ * سیگنالِ روند‌گیری (kind: 'trend') تارگت ندارد — step با tps ِ خالی سهمِ
+ * بی‌نهایت می‌ساخت. این‌جا فقط حد ضررِ اضطراری با کندلِ ۵ دقیقه سنجیده
+ * می‌شود؛ خروجِ اصلی (کلوزِ روزانه زیرِ EMA) کارِ trendRunner است.
+ */
+export function stopStep(sig, candles) {
+  if (sig.status !== 'open') return [];
+  for (const k of candles) {
+    if (k.t < sig.lastT) continue;
+    sig.lastT = k.t + 1;
+    if (k.l <= sig.slNow) {
+      sig.realized = (sig.slNow - sig.entry) / sig.risk;
+      close(sig, 'sl', k.t);
+      const e = { type: 'sl', price: sig.slNow, r: sig.realized, t: k.t };
+      sig.events.push(e);
+      return [e];
+    }
+  }
+  return [];
+}
+
+/** خروجِ قاعده‌ای (کلوزِ روزانه زیرِ EMA) برای سیگنالِ روند */
+export function ruleExit(sig, price, t) {
+  if (sig.status !== 'open') return null;
+  sig.realized = (price - sig.entry) / sig.risk;
+  close(sig, 'ema', t);
+  const e = { type: 'exit', price, r: sig.realized, t };
+  sig.events.push(e);
+  return e;
+}
+
 function close(sig, outcome, t) {
   sig.status = 'closed';
   sig.outcome = outcome;
