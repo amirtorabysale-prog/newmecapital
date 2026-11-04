@@ -34,6 +34,9 @@ function load() {
   state.trend.closed ??= [];
   state.trend.seen ??= {};
   state.trend.alerts ??= {};
+  state.journal ??= {};
+  state.journal.setups ??= {};
+  state.journal.levels ??= {};
   return state;
 }
 
@@ -97,6 +100,9 @@ export const store = {
 
   /** دفترِ روند‌گیری: پوزیشن‌های کاغذی، هشدارهای انتشار، آخرین کندلِ دیده‌شده‌ی هر نماد */
   trend: () => load().trend,
+
+  /** دفترِ سایه (src/journal.js): همه‌ی پیشنهادهای بات، بی‌تأییدِ ادمین */
+  journal: () => load().journal,
 
   signals: () => Object.values(load().signals),
   putSignal(sig) {

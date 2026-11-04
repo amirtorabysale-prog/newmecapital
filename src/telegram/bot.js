@@ -16,12 +16,13 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { SCAN_INTERVALS, TIMEFRAMES, parseSymbol, saveSettings, setParam, resetParams } from '../config.js';
 import { scanOne, setupKey } from '../scanner.js';
-import { fetchFrom, fetchCandles } from '../exchanges/index.js';
+import { fetchFrom, fetchCandles, TF_MS } from '../exchanges/index.js';
 import { drawings } from '../drawings.js';
 import { KINDS, freshTouches, confirmAt } from '../strategy/watch.js';
 import { atr } from '../strategy/indicators.js';
 import { TRACK_TF, MAX_5M, catchUp, needsCatchUp, newSignal, step, stopStep } from '../tracker.js';
 import { createTrendRunner, nextRunAt, TREND_MODES } from '../trendRunner.js';
+import { setupRecord, levelRecord, stepLevel, prune } from '../journal.js';
 import { applyEdits, validatePlan, hasEdits, checkLivePrice } from '../planEdit.js';
 import { renderChart } from '../chart/render.js';
 import { store, dataDir } from '../store.js';
@@ -91,6 +92,7 @@ export function createBot({ api, env, cfg, log = console }) {
     channel: { id: channelId(), status: channelStatus, fromPanel: !!cfg.channel?.id },
     webApp: webAppUrl(),
     trend: { ...trend.view(), nextAt: nextTrendAt },
+    journal: store.journal(),
   });
 
   // ───────────────────────────── زمان‌بندی
@@ -152,6 +154,7 @@ export function createBot({ api, env, cfg, log = console }) {
         await onProgress?.(i, cfg.watchlist.length, item.id);
         out.push(await analyzeItem(item));
       }
+      journalScan(out);
       let alerts = 0;
       for (const r of out) {
         if (!r.result || !r.result.alertable || r.result.score < cfg.alertThreshold) continue;
@@ -500,6 +503,99 @@ export function createBot({ api, env, cfg, log = console }) {
     }
   }
 
+  // ───────────────────────────── دفترِ سایه (src/journal.js) — بی‌صدا، بی‌تأیید
+  /** هر ستاپِ قابلِ هشدار (حتی زیرِ آستانه) و هر نزدیک شدن به خط، یک بار برای هر کلید */
+  function journalScan(out) {
+    const J = store.journal();
+    const tf = TF_MS[cfg.timeframe];
+    let added = 0;
+    for (const r of out) {
+      const res = r.result;
+      if (!res || !r.data) continue;
+      const lastT = r.data.candles.at(-1).t;
+      const key = setupKey(r);
+      if (res.plan && res.alertable && !J.setups[key]) {
+        J.setups[key] = setupRecord({
+          key, row: r, closeT: lastT + tf, alerted: res.score >= cfg.alertThreshold, maxHoldHours: cfg.maxHoldHours,
+        });
+        added++;
+      }
+      const nk = `near:${key}`;
+      if (res.line.state === 'approach' && !res.blocked.length && !J.levels[nk]) {
+        J.levels[nk] = levelRecord({
+          id: nk, kind: 'near', base: r.item.base, symbol: r.item.id, pretty: r.data.pretty,
+          exchangeKey: r.data.exchangeKey, exSymbol: r.data.symbol, side: res.direction,
+          lvl: { t0: lastT, p0: res.line.priceNow, perMs: res.line.slope / tf },
+          atr: res.atr, startT: lastT + tf, meta: { setupKey: key, score: res.score, distAtr: res.line.distAtr },
+        });
+        added++;
+      }
+    }
+    if (added) store.save();
+  }
+
+  /** رسیدن به رسمِ استاد */
+  function journalWatch({ item, data, d, hit, k, A, check }) {
+    const J = store.journal();
+    const id = `w:${item.base}:${d.id}:${hit.key}:${k.t}`;
+    if (J.levels[id]) return;
+    const [p, q] = d.points;
+    const lvl = d.kind === 'trend' ? { t0: p.t, p0: p.p, perMs: (q.p - p.p) / (q.t - p.t) } : { t0: k.t, p0: hit.price, perMs: 0 };
+    J.levels[id] = levelRecord({
+      id, kind: 'watch', base: item.base, symbol: item.id, pretty: data.pretty,
+      exchangeKey: data.exchangeKey, exSymbol: data.symbol, side: hit.side, lvl, atr: A, startT: k.t, touchedT: k.t,
+      meta: { label: hit.label, drawKind: d.kind, div: check.div?.type || null, pattern: check.pattern?.fa || null, oversold: !!check.oversold },
+    });
+    store.save();
+  }
+
+  /** پیگیریِ دفترِ سایه: ستاپ‌ها با کندلِ ۵ دقیقه، سطح‌ها با کندلِ یک‌ساعته. هیچ پیامی نمی‌رود. */
+  let journaling = false;
+  async function runJournal(now = Date.now()) {
+    if (journaling) return;
+    journaling = true;
+    try {
+      const J = store.journal();
+      const cache = new Map();
+      const get = async (ex, sym, tf, n) => {
+        const k = `${ex}|${sym}|${tf}`;
+        const c = cache.get(k);
+        if (c && c.n >= n) return c.rows;
+        const rows = await fetchFrom(ex, sym, tf, n);
+        cache.set(k, { n, rows });
+        return rows;
+      };
+      for (const sig of Object.values(J.setups).filter((x) => x.status === 'open')) {
+        try {
+          let candles;
+          if (needsCatchUp(sig, now)) {
+            const hours = Math.min(1000, Math.ceil((now - sig.lastT) / 3_600_000) + 2);
+            candles = catchUp(await get(sig.exchangeKey, sig.exSymbol, '1h', hours), await get(sig.exchangeKey, sig.exSymbol, TRACK_TF, MAX_5M), sig.lastT);
+          } else {
+            candles = await get(sig.exchangeKey, sig.exSymbol, TRACK_TF, Math.ceil((now - sig.lastT) / 300_000) + 2);
+          }
+          step(sig, candles, now);
+        } catch (e) {
+          log.warn(`[journal] ${sig.pretty}: ${e.message}`);
+        }
+      }
+      for (const rec of Object.values(J.levels).filter((x) => x.status === 'open')) {
+        if (now - rec.lastT < 3_600_000) continue; // هنوز کندلِ یک‌ساعته‌ی تازه‌ای بسته نشده
+        try {
+          const n = Math.min(1000, Math.ceil((now - rec.lastT) / 3_600_000) + 2);
+          stepLevel(rec, await get(rec.exchangeKey, rec.exSymbol, '1h', n));
+        } catch (e) {
+          log.warn(`[journal] ${rec.pretty}: ${e.message}`);
+        }
+      }
+      prune(J.setups);
+      prune(J.levels);
+      store.save();
+    } finally {
+      journaling = false;
+    }
+  }
+
   // ───────────────────────────── تماشای رسم‌های آزادِ استاد
   /**
    * هر ارزی که رسمِ تماشاشده دارد: کندل‌های یک‌ساعته‌ی بسته‌شده، و اگر آخرین
@@ -530,6 +626,7 @@ export function createBot({ api, env, cfg, log = console }) {
             if (d.alerted?.[hit.key] === k.t) continue;
             drawings.markAlerted(base, d.id, hit.key, k.t);
             const check = confirmAt(cs, cfg.strategy, hit.side);
+            journalWatch({ item, data, d, hit, k, A, check });
             const text = M.watchAlert({ pretty: data.pretty, kind: KINDS[d.kind].fa, hit, close: k.c, check });
             const url = webAppUrl();
             const buttons = url ? [[{ text: '📌 دیدن روی چارت', web_app: { url: `${url}?mode=free&coin=${encodeURIComponent(base)}` } }]] : undefined;
@@ -600,6 +697,7 @@ export function createBot({ api, env, cfg, log = console }) {
       case 'adm': return show(chat, msgId, UI.admins(s, isOwner(chat)));
       case 'perf': return show(chat, msgId, UI.performance(s));
       case 'trend': return show(chat, msgId, UI.trend(s, isOwner(chat)));
+      case 'jrn': return show(chat, msgId, UI.journal(s, arg));
       case 'chan':
         await show(chat, msgId, { text: '⏳ در حالِ بررسیِ کانال…', buttons: [] });
         await refreshChannel();
@@ -1045,7 +1143,7 @@ export function createBot({ api, env, cfg, log = console }) {
     // پیگیری هر ۱۰ دقیقه — کندلِ ۵ دقیقه‌ای، پس دیرتر از ۱۵ دقیقه خبری نمی‌ماند
     trackTimer = setInterval(() => {
       runTracker().catch((e) => log.error('[track]', e));
-      runWatch().catch((e) => log.error('[watch]', e));
+      runWatch().catch((e) => log.error('[watch]', e)).finally(() => runJournal().catch((e) => log.error('[journal]', e)));
     }, 10 * 60_000);
     setTimeout(() => runTracker().catch((e) => log.error('[track]', e)), 20_000).unref?.();
     // مثلِ تایمرِ اسکن: polling پروسه را زنده نگه می‌دارد، این‌ها نباید
@@ -1069,7 +1167,7 @@ export function createBot({ api, env, cfg, log = console }) {
     for (const a of adminIds()) api.sendMessage(a, text).catch(() => {});
   }
 
-  return { start, runScan, runTracker, runWatch, runTrendDaily, trend, commands, decide, schedule, onCallback, onMessage, state, isAdmin, onWebSave };
+  return { start, runScan, runTracker, runWatch, runJournal, runTrendDaily, trend, commands, decide, schedule, onCallback, onMessage, state, isAdmin, onWebSave };
 }
 
 function withNote(screen, note) {

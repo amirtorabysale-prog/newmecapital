@@ -15,6 +15,7 @@ import { CONDITIONS, PARAMS, paramById, getPath, formatValue } from '../strategy
 import { esc, strategyText, coinReport, rowIcon, verdict, TF_FA, signR } from '../messages.js';
 import { summarize } from '../tracker.js';
 import { bookStats } from '../strategy/trend.js';
+import { levelStats, LEVEL_RULES } from '../journal.js';
 import { price } from '../format.js';
 import { SCAN_INTERVALS, TIMEFRAMES } from '../config.js';
 import { utc } from '../format.js';
@@ -49,6 +50,7 @@ export function home(s) {
       [b('🔎 اسکنِ همین الان', 'act:scan')],
       [b('📊 نتایجِ آخرین اسکن', 'nav:res'), b('📋 واچ‌لیست', 'nav:wl')],
       [b('📈 کارنامه‌ی سیگنال‌ها', 'nav:perf'), b(`🧭 روندِ روزانه${s.trend ? ` (${TREND_MODE_FA[s.trend.mode]})` : ''}`, 'nav:trend')],
+      [b('🗂 دفترِ سایه (همه‌ی پیشنهادها)', 'nav:jrn')],
       [b('🧠 استراتژی', 'nav:st'), b('⚙️ تنظیمات', 'nav:set')],
       liveBtn(s.webApp),
       freeBtn(s.webApp),
@@ -547,5 +549,105 @@ export function trend(s, canManage) {
       t.mode !== 'off' ? [b('🔄 بررسیِ همین الان', 'act:trun')] : null,
       [b('🔄 به‌روز کن', 'nav:trend'), HOME],
     ].filter(Boolean),
+  };
+}
+
+// ───────────────────────────── دفترِ سایه
+const pctOf = (a, n) => (n ? `${Math.round((a / n) * 100)}٪` : '—');
+const LEVEL_FA = { bounce: '↩️ برگشت', break: '💥 شکست', none: '➖ بی‌واکنش', noTouch: '🚫 نرسید' };
+
+function setupLine(name, list) {
+  const st = summarize(list);
+  if (!st.total) return [`${name}: هنوز موردی نیست`];
+  const out = [`${name}: <b>${st.total}</b> · باز ${st.open} · بسته ${st.closed}`];
+  if (st.closed) out.push(`   موفق (تارگتِ ۱) ${st.wins} (${Math.round(st.winRate * 100)}٪) · حد ضرر ${st.losses} · جمع <b>${signR(st.totalR)}</b> · میانگین ${signR(st.avgR)}`);
+  return out;
+}
+
+function levelLine(name, list) {
+  const st = levelStats(list);
+  if (!st.total) return [`${name}: هنوز موردی نیست`];
+  const out = [`${name}: <b>${st.total}</b> · در جریان ${st.open}`];
+  if (st.closed) {
+    out.push(`   ${st.noTouch ? `نرسید ${st.noTouch} · ` : ''}رسید ${st.touched}: برگشت <b>${st.bounce}</b> (${pctOf(st.bounce, st.touched)}) · شکست ${st.break} (${pctOf(st.break, st.touched)}) · بی‌واکنش ${st.none}`);
+  }
+  return out;
+}
+
+/**
+ * @param tab  undefined ← خلاصه · 's' ← آخرین ستاپ‌ها · 'l' ← آخرین سطح‌ها
+ */
+export function journal(s, tab) {
+  const J = s.journal || { setups: {}, levels: {} };
+  const setups = Object.values(J.setups);
+  const levels = Object.values(J.levels);
+  const ago = (t) => {
+    const h = (Date.now() - t) / 3_600_000;
+    return h < 24 ? `${Math.max(0, Math.round(h))} ساعت` : `${Math.round(h / 24)} روز`;
+  };
+  const back = [b('🔄 به‌روز کن', `nav:jrn${tab ? `:${tab}` : ''}`), b('🗂 خلاصه', 'nav:jrn'), HOME];
+
+  if (tab === 's') {
+    const lines = ['🗂 <b>دفترِ سایه — آخرین ستاپ‌های خطِ روند</b>', ''];
+    const list = [...setups].sort((x, y) => y.createdAt - x.createdAt).slice(0, 15);
+    if (!list.length) lines.push('هنوز ستاپی ثبت نشده.');
+    for (const x of list) {
+      const dir = x.direction === 'short' ? 'فروش' : 'خرید';
+      const res = x.status === 'open'
+        ? (x.hits ? `باز، تارگتِ ${x.hits} خورده` : 'باز')
+        : `${x.hits && x.outcome !== 'tp_all' ? `✅ تا تارگتِ ${x.hits}، بعد ` : ''}${OUTCOME[x.outcome]} · <b>${signR(x.realized)}</b>`;
+      lines.push(`• ${esc(x.pretty)} ${dir} · امتیاز ${x.score}${x.alerted ? ' 🔔' : ''} · ورود ${price(x.entry)} · ${res} · ${ago(x.createdAt)} پیش`);
+    }
+    lines.push('', '<i>🔔 = هشدارش برای ادمین رفت (امتیاز ≥ آستانه).</i>');
+    return { text: lines.join('\n'), buttons: [[b('🎯 سطح‌ها', 'nav:jrn:l')], back] };
+  }
+
+  if (tab === 'l') {
+    const lines = ['🗂 <b>دفترِ سایه — آخرین رسیدن‌ها به سطح</b>', ''];
+    const list = [...levels].sort((x, y) => y.createdAt - x.createdAt).slice(0, 15);
+    if (!list.length) lines.push('هنوز موردی ثبت نشده.');
+    for (const x of list) {
+      const what = x.kind === 'near' ? 'نزدیکِ خطِ روند' : `رسمِ استاد: ${esc(x.meta.label || '')}`;
+      const conf = x.kind === 'watch' && (x.meta.div || x.meta.pattern) ? ' ✓تأیید' : '';
+      const res = x.status === 'open' ? (x.touchedT ? 'رسید، منتظرِ واکنش' : 'منتظرِ رسیدن') : LEVEL_FA[x.outcome];
+      lines.push(`• ${esc(x.pretty)} ${x.side === 'short' ? 'مقاومت' : 'حمایت'} · ${what}${conf} · ${res} · ${ago(x.createdAt)} پیش`);
+    }
+    return { text: lines.join('\n'), buttons: [[b('📐 ستاپ‌ها', 'nav:jrn:s')], back] };
+  }
+
+  const near = levels.filter((x) => x.kind === 'near');
+  const watch = levels.filter((x) => x.kind === 'watch');
+  const converted = near.filter((x) => J.setups[x.meta.setupKey]).length;
+  const R = LEVEL_RULES;
+  const t = s.trend;
+  const paper = t ? bookStats(t.closed) : null;
+  const lines = [
+    '🗂 <b>دفترِ سایه</b>',
+    'هر چیزی که بات پیشنهاد می‌دهد خودکار ثبت و پیگیری می‌شود، بدونِ تأیید و بدونِ ارسال به کانال یا ادمین. این کارنامه‌ی خودِ استراتژی است، نه کارنامه‌ی انتخاب‌های ادمین.',
+    '',
+    '📐 <b>استراتژیِ خطِ روند + فیبو + واگرایی</b>',
+    ...setupLine('همه‌ی ستاپ‌ها', setups),
+    ...setupLine('فقط بالای آستانه (هشدار رفت) 🔔', setups.filter((x) => x.alerted)),
+    ...setupLine('زیرِ آستانه', setups.filter((x) => !x.alerted)),
+    '',
+    '🎯 <b>رسیدن به سطحِ مهم</b>',
+    ...levelLine('نزدیک شدن به خطِ روند', near),
+    near.length ? `   بعداً ستاپِ کامل شد: ${converted} از ${near.length}` : null,
+    ...levelLine('رسمِ آزادِ استاد', watch),
+    ...(watch.length ? [
+      ...levelLine('   با تأیید (واگرایی یا کندل)', watch.filter((x) => x.meta.div || x.meta.pattern)),
+      ...levelLine('   بی‌تأیید', watch.filter((x) => !x.meta.div && !x.meta.pattern)),
+    ] : []),
+    '',
+    `🧭 <b>روند‌گیریِ روزانه</b> (دفترِ کاغذی، همه‌ی ورودها)`,
+    t && t.mode !== 'off'
+      ? `باز ${t.open.length} · بسته ${paper.n}${paper.n ? ` · برنده ${paper.wins} (${Math.round(paper.winRate * 100)}٪) · جمع <b>${signR(paper.totalR)}</b> (با کارمزد)` : ''}`
+      : 'حالتِ روند خاموش است؛ ثبت نمی‌شود.',
+    '',
+    `<i>ستاپ: ورود = کلوزِ کندلِ اسکن، مدیریت مثلِ سیگنالِ منتشرشده، بدونِ کارمزد. سطح (کندلِ ۱ ساعته): برگشت = ${R.bounceAtr} ATR حرکت به سمتِ برگشت · شکست = کلوزِ ${R.breakAtr} ATR آن طرفِ سطح · بی‌واکنش = هیچ‌کدام در ${R.reactBars} ساعت · نرسید = خط تا ${R.touchBars} ساعت لمس نشد.</i>`,
+  ].filter((x) => x != null);
+  return {
+    text: lines.join('\n'),
+    buttons: [[b('📐 ستاپ‌ها', 'nav:jrn:s'), b('🎯 سطح‌ها', 'nav:jrn:l')], [b('🧭 روندِ روزانه', 'nav:trend')], back.slice(0, 1).concat([HOME])],
   };
 }

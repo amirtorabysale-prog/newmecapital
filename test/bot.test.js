@@ -140,3 +140,21 @@ test('هشدارِ «در حالِ انتشار»: پیامِ درست به اد
   assert.equal(store.alert(id).status, 'pending');
   assert.ok(again.api.calls.some((c) => c.name === 'sendMessage' && /نیمه‌کاره/.test(c.args[1])), 'مالک خبر نگرفت');
 });
+
+test('دفترِ سایه: ستاپِ اسکن بی‌تأیید ثبت می‌شود و صفحه‌اش باز می‌شود', async () => {
+  const { bot } = setup();
+  await bot.runScan();
+  const J = bot.state().journal;
+  const setups = Object.values(J.setups);
+  assert.ok(setups.length >= 1, 'ستاپی ثبت نشد');
+  assert.equal(setups[0].status, 'open');
+  const n = setups.length;
+  await bot.runScan();
+  assert.equal(Object.values(bot.state().journal.setups).length, n, 'همان ستاپ دو بار ثبت شد');
+  const { journal } = await import('../src/telegram/panel.js');
+  for (const tab of [undefined, 's', 'l']) {
+    const scr = journal(bot.state(), tab);
+    assert.ok(scr.text.includes('دفترِ سایه'));
+    assert.ok(scr.buttons.flat().every((x) => Buffer.byteLength(x.callback_data || '') <= 64));
+  }
+});
