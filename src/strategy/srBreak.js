@@ -43,7 +43,7 @@ export const SR_DEFAULTS = {
   maxBreakAtr: Infinity, // کلوز بیش از این فاصله از سطح ← ورود نکن
   minStopAtr: 0, // فاصله‌ی ورود تا استاپ حداقل این × ATR
   // S7r — ورود روی برگشت به سطحِ شکسته‌شده (به‌جای کلوزِ کندلِ شکست)
-  entryMode: 'break', // 'break' | 'retest'
+  entryMode: 'break', // 'break' | 'retest' | 'follow'
   retestAwayAtr: 1, // قبل از برگشت، قیمت باید حداقل این × ATR از سطح دور شده باشد (تا «برگشت» همان کندلِ بعدِ شکست نباشد)
   retestBars: 20, // حداکثر کندل بعد از شکست برای رسیدن به ناحیه
   retestConfirmBars: 3, // بعد از رسیدن به ناحیه، حداکثر این تعداد کندل برای کلوزِ برگشتی بالای سطح
@@ -52,6 +52,10 @@ export const SR_DEFAULTS = {
   bounceStrong: false, // کندلِ تأییدِ برگشت: کندلی جدا بعد از کندلِ برخورد، صعودی، بدنه ≥ strongBody ِ طول، کلوز در یک‌سومِ بالا
   bounceVolMult: 0, // حجمِ کندلِ تأییدِ برگشت ≥ این × میانگینِ volPeriod کندلِ قبل از شکست
   strongBody: 0.5,
+  // S7f — entryMode 'follow': ورود بعد از followBars کندلِ بعد از شکست، روی کلوزِ آخری
+  followBars: 2,
+  followDir: false, // هر کندلِ بعدی در جهتِ معامله بسته شود (خرید: کلوز > اوپن)
+  followVolMult: 0, // حجمِ هر کندلِ بعدی ≥ این × میانگینِ volPeriod کندلِ قبل از شکست
 };
 
 /** کندلِ قوی در جهتِ خرید: صعودی، بدنه ≥ body×طول، کلوز در یک‌سومِ بالای کندل */
@@ -186,6 +190,16 @@ export function detect(bars, daily, tfMs, p = SR_DEFAULTS) {
           if (B[j].c >= c.level && okStrong && okVol) { ei = j; let m = Infinity; for (let q = touchI; q <= j; q++) m = Math.min(m, B[q].l); rt = { why: 'ok', touchI, minL: m }; break; }
         }
         if (ei < 0 && rt.why === 'noRetest' && i + p.retestBars + p.retestConfirmBars >= B.length) rt.why = 'pending';
+      }
+      if (p.entryMode === 'follow') {
+        ei = -1; rt = { why: 'pending' };
+        for (let j = i + 1; j <= i + p.followBars; j++) {
+          if (j >= B.length) break;
+          if (B[j].c < c.level) { rt = { why: 'backInside', j }; break; } // کلوز برگشت زیرِ سطح
+          if (p.followDir && !(B[j].c > B[j].o)) { rt = { why: 'wrongDir', j }; break; }
+          if (p.followVolMult && B[j].v < p.followVolMult * volAvg) { rt = { why: 'lowVol', j }; break; }
+          if (j === i + p.followBars) { ei = j; rt = { why: 'ok' }; }
+        }
       }
       const entry = ei >= 0 ? B[ei].c : NaN;
       let stop = c.level - p.stopAtr * A;
