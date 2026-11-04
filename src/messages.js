@@ -376,7 +376,7 @@ export function trendChannelSignal({ pretty, entry, stop, ema, emaPeriod }) {
 export function trendAdminAlert({ pretty, exchange, ev, emaPeriod, ttlHours }) {
   const P = (v) => price(v, ev.close);
   return [
-    `📈 <b>روند: ${esc(pretty)} بالای EMA${emaPeriod} بسته شد</b>`,
+    `📈 <b>روند: ${esc(pretty)} دومین کلوزِ پیاپی بالای EMA${emaPeriod} (تأیید)</b>`,
     `کلوزِ ${utc(ev.t).slice(0, 10)}: <code>${P(ev.close)}</code> · EMA${emaPeriod} <code>${P(ev.ema)}</code> (+${ev.distPct.toFixed(1)}٪) · ${esc(exchange)}`,
     `حد ضررِ اضطراری: <code>${P(ev.stop)}</code> (−${ev.stopPct.toFixed(1)}٪، ۳ ATR ِ روزانه)`,
     '',
@@ -393,7 +393,7 @@ export function trendExitText(sig, e) {
 export function trendPaperEntry(pos, emaPeriod) {
   const P = (v) => price(v, pos.entry);
   return `📝 <b>کاغذیِ روند</b> · ورود <b>${esc(pos.pretty)}</b> در <code>${P(pos.entry)}</code>`
-    + ` (کلوز بالای EMA${emaPeriod})\nحد ضررِ اضطراری <code>${P(pos.stop)}</code> (−${((pos.risk / pos.entry) * 100).toFixed(1)}٪)`;
+    + ` (کلوزِ تأیید بالای EMA${emaPeriod})\nحد ضررِ اضطراری <code>${P(pos.stop)}</code> (−${((pos.risk / pos.entry) * 100).toFixed(1)}٪)`;
 }
 
 /** کپشنِ چارتِ روند از پنل (src/chart/trendChart.js) */
@@ -414,9 +414,9 @@ export function trendChartCaption({ pretty, exchange, ev, open, state, shown, la
     lines.push('', `🔴 <b>خروج:</b> همین کلوز زیرِ EMA${emaPeriod} بسته شد.`);
   } else if (ev.ok && ev.above) {
     const why = lastExit === 'stop' ? 'ورودِ قبلی با حد ضررِ اضطراری بسته شد' : 'تقاطع پیش از جمع شدنِ تاریخچه‌ی کافی بود';
-    lines.push('', `⚪️ بالای EMA است، ولی پوزیشنِ قاعده‌ای باز نیست (${why}). ورودِ بعدی فقط با یک تقاطعِ تازه از زیر به بالا.`);
+    lines.push('', `⚪️ بالای EMA است، ولی پوزیشنِ قاعده‌ای باز نیست (${why}). ورودِ بعدی فقط با یک تقاطعِ تازه از زیر به بالا و کلوزِ تأییدِ روزِ بعد.`);
   } else {
-    lines.push('', `⚪️ <b>منتظر:</b> ورود وقتی است که کلوزِ روزانه بالای EMA${emaPeriod} برود.`);
+    lines.push('', `⚪️ <b>منتظر:</b> ورود وقتی است که کلوزِ روزانه بالای EMA${emaPeriod} برود و کلوزِ روزِ بعد هم بالای آن بماند.`);
   }
   if (shown.length) {
     const wins = shown.filter((t) => t.r > 0).length;

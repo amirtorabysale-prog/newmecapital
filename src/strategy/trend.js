@@ -2,7 +2,8 @@
  * روند‌گیریِ روزانه — «بالای EMA50 بمان». تنها استراتژی‌ای که در پژوهش روی
  * واچ‌لیست، سالِ آخر و ۲۰ نمادِ دیگر مثبت ماند (docs/research/).
  *
- *   ورود:  کلوزِ روزانه از زیر به بالای EMA ‏(close[i] > ema[i] و close[i-1] ≤ ema[i-1])
+ *   ورود:  کلوزِ روزانه از زیر به بالای EMA، و کلوزِ روزِ بعد هم بالای EMA (کندلِ تأیید)
+ *          — confirmBars=1؛ با 0 همان ورود روی کندلِ تقاطع (نسخه‌ی پژوهشِ اول)
  *   خروج:  اولین کلوزِ روزانه زیرِ EMA
  *   استاپِ فاجعه: ورود − ۳ × ATR(14) ِ روزانه، ثابت؛ روی low ِ روزهای بعد،
  *          پر شدن با min(استاپ, open) — گپِ رو به پایین بدتر از استاپ پر می‌شود.
@@ -25,6 +26,9 @@ export const TREND_DEFAULTS = {
   atrPeriod: 14,
   // پژوهش ۲۱۰ روز گرم شدن داشت؛ EMA50 بعد از آن عملاً همگرا است
   minBars: 211,
+  // ورود یک کلوز بعد از تقاطع، اگر آن کلوز هم بالای EMA بماند (docs/research/04-trend-robust.md:
+  // «ورود یک روز دیرتر» در داخل، خارج و جهان امیدِ بالاتری داشت)
+  confirmBars: 1,
   feePct: 0.1,
   slippagePct: 0.05,
 };
@@ -39,7 +43,8 @@ export function indicators(bars, p = TREND_DEFAULTS) {
 
 /**
  * وضعیتِ کندلِ i (پیش‌فرض: آخرین کندلِ بسته).
- * @returns {{ ok: false, reason } | { ok: true, t, closeT, close, ema, atr, above, crossUp, crossDown, stop, distPct }}
+ * @returns {{ ok: false, reason } | { ok: true, t, closeT, close, ema, atr, above, crossUp, crossDown, entry, stop, distPct }}
+ *   entry: سیگنالِ ورود روی همین کلوز — crossUp، یا با confirmBars=1 تقاطعِ دیروز + کلوزِ امروز بالای EMA
  */
 export function evaluate(bars, p = TREND_DEFAULTS, ind = indicators(bars, p), i = bars.length - 1) {
   if (i + 1 < p.minBars) return { ok: false, reason: `فقط ${i + 1} کندلِ روزانه (حداقل ${p.minBars})` };
@@ -50,6 +55,10 @@ export function evaluate(bars, p = TREND_DEFAULTS, ind = indicators(bars, p), i 
   const cPrev = bars[i - 1].c;
   const ePrev = ind.ema[i - 1];
   const stop = c - p.stopAtr * a;
+  const cross = (j) => bars[j].c > ind.ema[j] && bars[j - 1].c <= ind.ema[j - 1];
+  const entry = (p.confirmBars ?? 0) > 0
+    ? c > e && i >= 2 && Number.isFinite(ind.ema[i - 2]) && cross(i - 1)
+    : c > e && cPrev <= ePrev;
   return {
     ok: true,
     t: bars[i].t,
@@ -60,6 +69,7 @@ export function evaluate(bars, p = TREND_DEFAULTS, ind = indicators(bars, p), i 
     above: c > e,
     crossUp: c > e && cPrev <= ePrev,
     crossDown: c < e && cPrev >= ePrev,
+    entry,
     stop,
     stopPct: ((c - stop) / c) * 100,
     distPct: (c / e - 1) * 100,
@@ -126,7 +136,7 @@ export function replay(bars, p = TREND_DEFAULTS) {
       } else continue;
     }
     const ev = evaluate(bars, p, ind, i);
-    if (ev.ok && ev.crossUp && ev.close - ev.stop > 0) pos = openPosition(ev);
+    if (ev.ok && ev.entry && ev.close - ev.stop > 0) pos = openPosition(ev);
   }
   if (pos) {
     // مثلِ موتور: آخرِ داده با کلوزِ آخر بسته می‌شود

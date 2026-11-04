@@ -23,17 +23,29 @@ before(async () => {
 const DAY = 86_400_000;
 const today = Math.floor(Date.now() / DAY) * DAY;
 
-/** ۲۶۰ روزِ نزولی با دامنه‌ی پهن، و کندلِ آخر که بالای EMA50 می‌بندد */
+/**
+ * ۲۶۰ روزِ نزولی با دامنه‌ی پهن، کندلِ ماقبلِ آخر که بالای EMA50 می‌بندد (تقاطع)
+ * و کندلِ آخر که باز هم بالای آن می‌بندد (تأیید ← ورود روی کلوزِ آخر)
+ */
 function bars(lastT) {
   const n = 260;
   const out = [];
-  for (let i = 0; i < n - 1; i++) {
+  for (let i = 0; i < n - 2; i++) {
     const c = 100 - i * 0.08;
     out.push({ t: lastT - (n - 1 - i) * DAY, o: c + 0.04, h: c + 5, l: c - 5, c, v: 1 });
   }
-  out.push({ t: lastT, o: 80, h: 96, l: 79, c: 95, v: 1 });
+  out.push({ t: lastT - DAY, o: 80, h: 96, l: 79, c: 95, v: 1 });
+  out.push({ t: lastT, o: 95, h: 96, l: 93, c: 95, v: 1 });
   return out;
 }
+
+test('تقاطع بدونِ کلوزِ تأیید ورود نیست', async () => {
+  const series = bars(today - DAY).slice(0, -1); // کلوزِ آخر خودِ تقاطع است
+  const { api, runner } = setup('paper', series);
+  await runner.runDaily(today - DAY + 3_600_000);
+  assert.equal(store.trend().book.TEST, undefined);
+  assert.equal(api.calls.length, 0);
+});
 
 function fakeApi() {
   const calls = [];

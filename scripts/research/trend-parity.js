@@ -11,7 +11,7 @@ const xs = [
 ].map(prep);
 let n = 0; let bad = 0; let sumRef = 0; let sumGot = 0;
 for (const x of xs) {
-  const ref = runSymbol(x, FAMILIES.C, { n: 50 }, null, 0, Infinity);
+  const ref = runSymbol(x, FAMILIES.C, { n: 50, confirm: 1 }, null, 0, Infinity);
   // موتور فقط بعد از x.startT وارد می‌شود؛ replay از کندلِ ۲۱۱ام — اگر سری پیوسته باشد یکی‌اند
   const got = replay(x.b);
   n += ref.length;

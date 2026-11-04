@@ -42,7 +42,7 @@ function hourly(days, seed) {
 test('برابری با موتورِ پژوهش: همان ورودها، خروج‌ها و R', () => {
   for (const seed of [1, 2, 3, 4, 5]) {
     const x = prep({ id: 'T', candles: hourly(1600, seed) });
-    const ref = runSymbol(x, FAMILIES.C, { n: 50 }, null, 0, Infinity);
+    const ref = runSymbol(x, FAMILIES.C, { n: 50, confirm: 1 }, null, 0, Infinity);
     const got = replay(x.b, TREND_DEFAULTS);
     assert.ok(ref.length >= 8, `معامله‌ی کافی برای آزمون (${ref.length})`);
     assert.equal(got.length, ref.length, `seed ${seed}: تعدادِ معامله`);
@@ -74,6 +74,22 @@ test('evaluate: کراسِ رو به بالا فقط روی همان کندل', 
     assert.equal(evaluate(x.b, TREND_DEFAULTS, ind, i + 1).crossUp, false, 'کندلِ بعد دیگر کراس نیست');
   }
   assert.equal(evaluate(x.b.slice(0, 100)).ok, false, 'تاریخچه‌ی کوتاه رد می‌شود');
+});
+
+test('evaluate: ورود فقط روی کلوزِ تأیید — یک روز بعد از تقاطع و بالای EMA', () => {
+  const x = prep({ id: 'T', candles: hourly(900, 7) });
+  const ind = indicators(x.b);
+  let n = 0;
+  for (let i = 212; i < x.b.length; i++) {
+    const ev = evaluate(x.b, TREND_DEFAULTS, ind, i);
+    const prevCross = evaluate(x.b, TREND_DEFAULTS, ind, i - 1).crossUp;
+    assert.equal(ev.entry, prevCross && ev.above, `کندلِ ${i}`);
+    if (ev.crossUp) assert.equal(ev.entry, false, 'خودِ کندلِ تقاطع ورود نیست');
+    if (ev.entry) n++;
+    const raw = evaluate(x.b, { ...TREND_DEFAULTS, confirmBars: 0 }, ind, i);
+    assert.equal(raw.entry, raw.crossUp, 'confirmBars=0 همان ورودِ قدیمی');
+  }
+  assert.ok(n > 2);
 });
 
 test('advance: پوزیشن از کندلِ بعد از ورود سنجیده می‌شود و دو بار خروج نمی‌دهد', () => {

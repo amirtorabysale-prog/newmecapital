@@ -150,7 +150,7 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
         if ((st.seen[item.base] ?? -Infinity) >= ev.t) continue;
         st.seen[item.base] = ev.t;
         store.save();
-        if (!ev.crossUp || now - ev.closeT > STALE_MS) continue;
+        if (!ev.entry || now - ev.closeT > STALE_MS) continue;
         if (!st.book[item.base]) await paperEntry(item, data, ev, p);
         if (p.mode === 'live') await sendAlert(item, data, ev, p);
       }

@@ -63,7 +63,13 @@ export const FAMILIES = {
     title: 'C. رژیم: بالای EMA بمان',
     grid: [50, 100, 200].map((n) => ({ n })),
     label: (p) => `EMA${p.n}`,
-    entry: (x, i, p) => (Number.isFinite(x.ema[p.n][i]) && x.c[i] > x.ema[p.n][i] && x.c[i - 1] <= x.ema[p.n][i - 1] ? 'long' : null),
+    // p.confirm=1: ورود یک کلوز بعد از تقاطع، اگر آن کلوز هم بالای EMA باشد (بات همین را اجرا می‌کند)
+    entry: (x, i, p) => {
+      const e = x.ema[p.n];
+      const j = p.confirm ? i - 1 : i;
+      if (j < 1 || !Number.isFinite(e[j]) || !(x.c[j] > e[j] && x.c[j - 1] <= e[j - 1])) return null;
+      return x.c[i] > e[i] ? 'long' : null;
+    },
     stop0: (x, i) => x.c[i] - 3 * x.atr[i], // فقط استاپِ فاجعه؛ خروجِ اصلی زیرِ EMA است
     trail: () => null,
     exitNow: (x, i, pos, p) => x.c[i] < x.ema[p.n][i],

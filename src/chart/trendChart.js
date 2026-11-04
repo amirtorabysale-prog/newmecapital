@@ -182,7 +182,7 @@ export function buildTrendSvg({ bars, p = TREND_DEFAULTS, trades = [], open = nu
   out.push(text(PAD_L, fy, shown.length
     ? `Rule trades on chart: ${shown.length} · wins ${wins} · net ${sum >= 0 ? '+' : ''}${sum.toFixed(1)}R (fees + slippage incl.)`
     : 'No closed rule trades in this window', { size: 13, fill: C.text, weight: 700 }));
-  out.push(text(PAD_L, fy + 22, `Enter: daily close crosses above EMA ${p.emaPeriod} · Exit: first daily close below it · Emergency stop: entry − ${p.stopAtr} ATR(${p.atrPeriod})`,
+  out.push(text(PAD_L, fy + 22, `Enter: ${p.confirmBars ? `2nd daily close above EMA ${p.emaPeriod} after a cross` : `daily close crosses above EMA ${p.emaPeriod}`} · Exit: first daily close below it · Emergency stop: entry − ${p.stopAtr} ATR(${p.atrPeriod})`,
     { size: 12, fill: C.axis }));
   out.push(tri(right - 250, fy - 12, true, C.up), text(right - 238, fy - 3, 'entry', { size: 12, fill: C.axis }));
   out.push(tri(right - 180, fy - 3, false, C.axis), text(right - 168, fy - 3, 'exit (R)', { size: 12, fill: C.axis }));
