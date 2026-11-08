@@ -109,6 +109,19 @@ test('کاغذی: ورود یک بار، خروج با کلوزِ زیرِ EMA،
   assert.ok(api.calls.every((c) => c.args[0] === '111'), 'فقط ادمین');
 });
 
+test('هشدارِ روندِ گذشته از مهلت از صف بیرون می‌رود', async () => {
+  const { api, runner, cfg } = setup('live', bars(today - DAY));
+  await runner.runDaily(today + 600_000);
+  const [a] = Object.values(store.trend().alerts);
+  assert.equal(a.status, 'pending');
+  await runner.expireAlerts(a.ev.closeT + cfg.trend.alertTtlHours * 3_600_000);
+  assert.equal(a.status, 'pending', 'دقیقاً سرِ مهلت هنوز معتبر است');
+  await runner.expireAlerts(a.ev.closeT + (cfg.trend.alertTtlHours + 1) * 3_600_000);
+  assert.equal(a.status, 'expired');
+  assert.equal(runner.view().pending.length, 0);
+  assert.ok(api.calls.some((c) => c.name === 'editText' && /مهلتِ/.test(c.args[2])));
+});
+
 test('ورود روی کلوزِ کهنه گرفته نمی‌شود', async () => {
   const { api, runner } = setup('paper', bars(today - 5 * DAY));
   await runner.runDaily(today);

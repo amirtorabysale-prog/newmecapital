@@ -82,6 +82,8 @@ test('کارنامه: درصدِ موفقیت و جمعِ R', () => {
   assert.equal(st.wins, 1);
   assert.equal(st.losses, 1);
   assert.ok(Math.abs(st.totalR - (-1 + 1 / 3)) < 1e-9);
+  assert.ok(Math.abs(st.avgWinR - 1 / 3) < 1e-9, 'میانگینِ موفق‌ها فقط از برنده‌ها');
+  assert.equal(summarize([a]).avgWinR, null);
 });
 
 test('ویرایشِ پلن: R:R دوباره حساب می‌شود، تارگتِ حذف‌شده می‌رود، JSON سالم می‌ماند', () => {

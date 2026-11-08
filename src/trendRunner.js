@@ -251,6 +251,17 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
     }
   }
 
+  /** هشدارِ گذشته از مهلت دیگر قابلِ انتشار نیست؛ از صف بیرون می‌رود و دکمه‌هایش برداشته می‌شود */
+  async function expireAlerts(now = Date.now()) {
+    const ttl = trendParams(cfg).alertTtlHours;
+    for (const a of Object.values(T().alerts)) {
+      if (a.status !== 'pending' || (now - a.ev.closeT) / 3_600_000 <= ttl) continue;
+      a.status = 'expired';
+      store.save();
+      await closeAlert(a, `⌛️ مهلتِ ${ttl} ساعته‌ی انتشار گذشت.`);
+    }
+  }
+
   /** چارتِ پیامِ کانال با قیمتِ لحظه‌ی انتشار؛ هر خطایی ← بی‌عکس منتشر می‌شود */
   async function publishChart(a, live) {
     const item = { id: a.symbol, base: a.base };
@@ -334,7 +345,7 @@ export function createTrendRunner({ api, cfg, log = console, adminIds, channelId
     };
   }
 
-  return { runDaily, decide, view, chart, isRunning: () => running };
+  return { runDaily, decide, view, chart, expireAlerts, isRunning: () => running };
 }
 
 /**

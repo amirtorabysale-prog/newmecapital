@@ -39,6 +39,7 @@ const STATUS_FA = {
   published: 'قبلاً منتشر شده.',
   rejected: 'قبلاً رد شده.',
   publishing: 'در حالِ انتشار است — ادمینِ دیگری همین الان زد.',
+  expired: 'مهلتِ انتشارِ این هشدار گذشته.',
 };
 
 export function createBot({ api, env, cfg, log = console }) {
@@ -653,6 +654,16 @@ export function createBot({ api, env, cfg, log = console }) {
     }
   }
 
+  /** هشدارِ گذشته از مهلت دیگر قابلِ انتشار نیست؛ از صف بیرون می‌رود و دکمه‌هایش برداشته می‌شود */
+  async function expireAlerts(now = Date.now()) {
+    for (const a of Object.values(store.get().alerts)) {
+      if (a.status !== 'pending' || (now - a.createdAt) / 3_600_000 <= cfg.alertTtlHours) continue;
+      store.updateAlert(a.id, { status: 'expired' });
+      await closeAlert(a, `⌛️ مهلتِ ${cfg.alertTtlHours} ساعته‌ی انتشار گذشت.`);
+    }
+    await trend.expireAlerts(now);
+  }
+
   // ───────────────────────────── پنل
   async function show(chat, msgId, screen) {
     if (msgId) {
@@ -1142,6 +1153,7 @@ export function createBot({ api, env, cfg, log = console }) {
     setTimeout(() => runTrendDaily(), 60_000).unref?.();
     // پیگیری هر ۱۰ دقیقه — کندلِ ۵ دقیقه‌ای، پس دیرتر از ۱۵ دقیقه خبری نمی‌ماند
     trackTimer = setInterval(() => {
+      expireAlerts().catch((e) => log.error('[expire]', e));
       runTracker().catch((e) => log.error('[track]', e));
       runWatch().catch((e) => log.error('[watch]', e)).finally(() => runJournal().catch((e) => log.error('[journal]', e)));
     }, 10 * 60_000);
@@ -1167,7 +1179,7 @@ export function createBot({ api, env, cfg, log = console }) {
     for (const a of adminIds()) api.sendMessage(a, text).catch(() => {});
   }
 
-  return { start, runScan, runTracker, runWatch, runJournal, runTrendDaily, trend, commands, decide, schedule, onCallback, onMessage, state, isAdmin, onWebSave };
+  return { start, runScan, runTracker, runWatch, runJournal, runTrendDaily, expireAlerts, trend, commands, decide, schedule, onCallback, onMessage, state, isAdmin, onWebSave };
 }
 
 function withNote(screen, note) {

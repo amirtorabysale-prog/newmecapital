@@ -141,6 +141,27 @@ test('هشدارِ «در حالِ انتشار»: پیامِ درست به اد
   assert.ok(again.api.calls.some((c) => c.name === 'sendMessage' && /نیمه‌کاره/.test(c.args[1])), 'مالک خبر نگرفت');
 });
 
+test('هشدارِ گذشته از مهلت از صف بیرون می‌رود و هشدارِ تازه می‌ماند', async () => {
+  const { store } = await import('../src/store.js');
+  const { api, bot, cfg } = setup();
+  cfg.cooldownHours = 0;
+  await bot.runScan();
+  const id = api.calls.find((c) => c.name === 'sendPhoto').args[3].buttons[0][0].callback_data.slice(3);
+  const now = Date.now();
+  await bot.expireAlerts(now);
+  assert.equal(store.alert(id).status, 'pending', 'هنوز در مهلت است');
+
+  api.calls.length = 0;
+  await bot.expireAlerts(now + (cfg.alertTtlHours + 1) * 3_600_000);
+  assert.equal(store.alert(id).status, 'expired');
+  assert.ok(api.calls.some((c) => c.name === 'editCaption' && /مهلتِ/.test(c.args[2])), 'دکمه‌ها برداشته نشد');
+  assert.equal(bot.state().pending, Object.values(store.get().alerts).filter((a) => a.status === 'pending').length);
+
+  api.calls.length = 0;
+  await bot.decide({ id: 'cb', from: { id: 111 } }, true, id);
+  assert.match(api.calls[0].args[1], /مهلتِ انتشار/);
+});
+
 test('دفترِ سایه: ستاپِ اسکن بی‌تأیید ثبت می‌شود و صفحه‌اش باز می‌شود', async () => {
   const { bot } = setup();
   await bot.runScan();

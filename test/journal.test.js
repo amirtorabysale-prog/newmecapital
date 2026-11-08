@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { levelRecord, stepLevel, levelStats, prune, setupRecord, levelAt } from '../src/journal.js';
+import { levelRecord, stepLevel, levelStats, prune, setupRecord, levelAt, netRealized, setupStats } from '../src/journal.js';
 import { step } from '../src/tracker.js';
 
 const H = 3_600_000;
@@ -81,4 +81,19 @@ test('ستاپ: از کلوزِ کندلِ اسکن پیگیری می‌شود،
   step(s, [{ t: T0 - M5, o: 100, h: 90, l: 90, c: 90 }, { t: T0, o: 100, h: 102.1, l: 99.5, c: 102 }, { t: T0 + M5, o: 102, h: 102, l: 99.9, c: 100 }], T0 + 2 * M5);
   assert.equal(s.outcome, 'be');
   assert.ok(Math.abs(s.realized - 0.5) < 1e-9);
+  // بی‌هزینه دقیقاً همان realized؛ با هزینه: هر بخش با قیمتِ خروجِ خودش
+  assert.ok(Math.abs(netRealized(s, { feePct: 0, slippagePct: 0 }) - 0.5) < 1e-9);
+  const hand = (x) => (x * 0.9995 - 100 * 1.0005 - 0.001 * (100 * 1.0005 + x * 0.9995)) / 2;
+  assert.ok(Math.abs(netRealized(s) - (0.5 * hand(102) + 0.5 * hand(100))) < 1e-9);
+  const st = setupStats([s]);
+  assert.ok(st.netTotalR < st.totalR);
+  assert.equal(st.netAvgWinR, st.netTotalR);
+  assert.equal(netRealized({ status: 'open' }), null);
+});
+
+test('کارمزدِ فروش و ستاپِ حد ضرر', () => {
+  const rec = { status: 'closed', direction: 'short', entry: 100, risk: 2, tps: [{}], hits: 0, events: [{ type: 'sl', price: 102 }] };
+  const e = 100 * 0.9995; const x = 102 * 1.0005;
+  assert.ok(Math.abs(netRealized(rec) - (e - x - 0.001 * (e + x)) / 2) < 1e-9);
+  assert.ok(netRealized(rec) < -1);
 });

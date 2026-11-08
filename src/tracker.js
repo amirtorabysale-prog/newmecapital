@@ -154,10 +154,12 @@ export function summarize(signals) {
   const closed = signals.filter((s) => s.status === 'closed');
   const open = signals.filter((s) => s.status === 'open');
   // «موفق» = دست‌کم تارگتِ اول، پیش از حد ضرر
-  const wins = closed.filter((s) => s.hits > 0).length;
+  const winners = closed.filter((s) => s.hits > 0);
+  const wins = winners.length;
   const losses = closed.filter((s) => s.outcome === 'sl').length;
   const totalR = closed.reduce((t, s) => t + s.realized, 0);
   return {
+    avgWinR: wins ? winners.reduce((t, s) => t + s.realized, 0) / wins : null,
     total: signals.length,
     open: open.length,
     closed: closed.length,

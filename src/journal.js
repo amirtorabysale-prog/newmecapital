@@ -25,9 +25,11 @@
  * می‌کند؛ این‌جا تکرار نمی‌شود، فقط در صفحه‌ی دفترِ سایه کنارِ بقیه نشان داده می‌شود.
  */
 
-import { newSignal } from './tracker.js';
+import { newSignal, summarize } from './tracker.js';
 
 export const LEVEL_RULES = { touchBars: 24, touchAtr: 0.25, reactBars: 24, bounceAtr: 1.5, breakAtr: 1.0 };
+/** همان هزینه‌ی همه‌ی بک‌تست‌ها، هر طرف (docs/STRATEGIES.md) */
+export const JOURNAL_COSTS = { feePct: 0.1, slippagePct: 0.05 };
 const KEEP_CLOSED = 2000;
 const H1 = 3_600_000;
 
@@ -106,6 +108,40 @@ function finish(rec, outcome, t) {
 export function prune(map) {
   const closed = Object.values(map).filter((x) => x.status === 'closed').sort((a, b) => a.closedAt - b.closedAt);
   for (const x of closed.slice(0, Math.max(0, closed.length - KEEP_CLOSED))) delete map[x.id];
+}
+
+/**
+ * R ِ خالصِ یک ستاپِ بسته با کارمزد و لغزش. هر بخشِ پوزیشن (تارگت‌ها و باقی‌مانده)
+ * جدا با قیمتِ خروجِ خودش از rec.events حساب می‌شود؛ پس روی رکوردهای قدیمی هم
+ * کار می‌کند و realized (بی‌کارمزد) دست نمی‌خورد.
+ */
+export function netRealized(rec, { feePct, slippagePct } = JOURNAL_COSTS) {
+  if (rec.status !== 'closed') return null;
+  const s = rec.direction === 'short' ? -1 : 1;
+  const fee = feePct / 100;
+  const slip = slippagePct / 100;
+  const share = 1 / rec.tps.length;
+  const tranche = (price) => {
+    const e = rec.entry * (1 + s * slip);
+    const x = price * (1 - s * slip);
+    return (s * (x - e) - fee * (e + x)) / rec.risk;
+  };
+  return rec.events.reduce((sum, ev) => sum + (ev.type === 'tp' ? share : 1 - share * rec.hits) * tranche(ev.price), 0);
+}
+
+/** آمارِ ستاپ‌ها؛ net* با کارمزد، بقیه مثلِ کارنامه بی‌کارمزد */
+export function setupStats(list, costs = JOURNAL_COSTS) {
+  const st = summarize(list);
+  const closed = list.filter((x) => x.status === 'closed');
+  const net = (x) => netRealized(x, costs);
+  const winners = closed.filter((x) => x.hits > 0);
+  const netTotalR = closed.reduce((t, x) => t + net(x), 0);
+  return {
+    ...st,
+    netTotalR,
+    netAvgR: closed.length ? netTotalR / closed.length : null,
+    netAvgWinR: winners.length ? winners.reduce((t, x) => t + net(x), 0) / winners.length : null,
+  };
 }
 
 /** آمارِ واکنش به سطح */

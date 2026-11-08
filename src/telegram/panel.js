@@ -15,7 +15,7 @@ import { CONDITIONS, PARAMS, paramById, getPath, formatValue } from '../strategy
 import { esc, strategyText, coinReport, rowIcon, verdict, TF_FA, signR } from '../messages.js';
 import { summarize } from '../tracker.js';
 import { bookStats } from '../strategy/trend.js';
-import { levelStats, LEVEL_RULES } from '../journal.js';
+import { levelStats, setupStats, netRealized, LEVEL_RULES, JOURNAL_COSTS } from '../journal.js';
 import { price } from '../format.js';
 import { SCAN_INTERVALS, TIMEFRAMES } from '../config.js';
 import { utc } from '../format.js';
@@ -398,7 +398,7 @@ export function performance(s) {
   ];
   if (st.closed) {
     lines.push(
-      `موفق (دست‌کم تارگتِ ۱): <b>${st.wins}</b> (${Math.round(st.winRate * 100)}٪) · حد ضرر ${st.losses}`,
+      `موفق (دست‌کم تارگتِ ۱): <b>${st.wins}</b> (${Math.round(st.winRate * 100)}٪)${st.wins ? ` · میانگینِ هر موفق ${signR(st.avgWinR)}` : ''} · حد ضرر ${st.losses}`,
       `جمع <b>${signR(st.totalR)}</b> · میانگینِ هر سیگنال ${signR(st.avgR)}`,
     );
   }
@@ -557,10 +557,13 @@ const pctOf = (a, n) => (n ? `${Math.round((a / n) * 100)}٪` : '—');
 const LEVEL_FA = { bounce: '↩️ برگشت', break: '💥 شکست', none: '➖ بی‌واکنش', noTouch: '🚫 نرسید' };
 
 function setupLine(name, list) {
-  const st = summarize(list);
+  const st = setupStats(list);
   if (!st.total) return [`${name}: هنوز موردی نیست`];
   const out = [`${name}: <b>${st.total}</b> · باز ${st.open} · بسته ${st.closed}`];
-  if (st.closed) out.push(`   موفق (تارگتِ ۱) ${st.wins} (${Math.round(st.winRate * 100)}٪) · حد ضرر ${st.losses} · جمع <b>${signR(st.totalR)}</b> · میانگین ${signR(st.avgR)}`);
+  if (st.closed) {
+    out.push(`   موفق (تارگتِ ۱) ${st.wins} (${Math.round(st.winRate * 100)}٪)${st.wins ? ` · میانگینِ هر موفق ${signR(st.netAvgWinR)}` : ''} · حد ضرر ${st.losses}`);
+    out.push(`   با کارمزد: جمع <b>${signR(st.netTotalR)}</b> · میانگین ${signR(st.netAvgR)} | بی‌کارمزد: جمع ${signR(st.totalR)}`);
+  }
   return out;
 }
 
@@ -595,10 +598,10 @@ export function journal(s, tab) {
       const dir = x.direction === 'short' ? 'فروش' : 'خرید';
       const res = x.status === 'open'
         ? (x.hits ? `باز، تارگتِ ${x.hits} خورده` : 'باز')
-        : `${x.hits && x.outcome !== 'tp_all' ? `✅ تا تارگتِ ${x.hits}، بعد ` : ''}${OUTCOME[x.outcome]} · <b>${signR(x.realized)}</b>`;
+        : `${x.hits && x.outcome !== 'tp_all' ? `✅ تا تارگتِ ${x.hits}، بعد ` : ''}${OUTCOME[x.outcome]} · <b>${signR(netRealized(x))}</b>`;
       lines.push(`• ${esc(x.pretty)} ${dir} · امتیاز ${x.score}${x.alerted ? ' 🔔' : ''} · ورود ${price(x.entry)} · ${res} · ${ago(x.createdAt)} پیش`);
     }
-    lines.push('', '<i>🔔 = هشدارش برای ادمین رفت (امتیاز ≥ آستانه).</i>');
+    lines.push('', '<i>🔔 = هشدارش برای ادمین رفت (امتیاز ≥ آستانه). نتیجه‌ها با کارمزد.</i>');
     return { text: lines.join('\n'), buttons: [[b('🎯 سطح‌ها', 'nav:jrn:l')], back] };
   }
 
@@ -644,7 +647,7 @@ export function journal(s, tab) {
       ? `باز ${t.open.length} · بسته ${paper.n}${paper.n ? ` · برنده ${paper.wins} (${Math.round(paper.winRate * 100)}٪) · جمع <b>${signR(paper.totalR)}</b> (با کارمزد)` : ''}`
       : 'حالتِ روند خاموش است؛ ثبت نمی‌شود.',
     '',
-    `<i>ستاپ: ورود = کلوزِ کندلِ اسکن، مدیریت مثلِ سیگنالِ منتشرشده، بدونِ کارمزد. سطح (کندلِ ۱ ساعته): برگشت = ${R.bounceAtr} ATR حرکت به سمتِ برگشت · شکست = کلوزِ ${R.breakAtr} ATR آن طرفِ سطح · بی‌واکنش = هیچ‌کدام در ${R.reactBars} ساعت · نرسید = خط تا ${R.touchBars} ساعت لمس نشد.</i>`,
+    `<i>ستاپ: ورود = کلوزِ کندلِ اسکن، مدیریت مثلِ سیگنالِ منتشرشده؛ «با کارمزد» یعنی ${JOURNAL_COSTS.feePct}٪ کارمزد + ${JOURNAL_COSTS.slippagePct}٪ لغزش هر طرف. سطح (کندلِ ۱ ساعته): برگشت = ${R.bounceAtr} ATR حرکت به سمتِ برگشت · شکست = کلوزِ ${R.breakAtr} ATR آن طرفِ سطح · بی‌واکنش = هیچ‌کدام در ${R.reactBars} ساعت · نرسید = خط تا ${R.touchBars} ساعت لمس نشد.</i>`,
   ].filter((x) => x != null);
   return {
     text: lines.join('\n'),
