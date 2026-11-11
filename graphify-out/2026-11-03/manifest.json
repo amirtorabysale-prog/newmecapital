@@ -1,0 +1,794 @@
+{
+  "config/default.json": {
+    "mtime": 1793174928.813749,
+    "seen": 1793175050.1613467,
+    "ast_hash": "",
+    "semantic_hash": ""
+  },
+  "package.json": {
+    "mtime": 1793620136.3153534,
+    "seen": 1793690805.3192434,
+    "ast_hash": "aff8714491c4ebf63456923e5d676f51",
+    "semantic_hash": ""
+  },
+  "railway.json": {
+    "mtime": 1793084308.0,
+    "seen": 1793690805.3192453,
+    "ast_hash": "b040b3a7154bfb5721852cb5ae8baab3",
+    "semantic_hash": ""
+  },
+  "scripts/backtest.js": {
+    "mtime": 1793087083.47376,
+    "seen": 1793690805.319249,
+    "ast_hash": "9391fd57533fd3efb77d68302d23dd9b",
+    "semantic_hash": ""
+  },
+  "scripts/scan-once.js": {
+    "mtime": 1793083961.0,
+    "seen": 1793690805.3192625,
+    "ast_hash": "4d51791b5a48ec5d39c19c63a2c63d13",
+    "semantic_hash": ""
+  },
+  "skills-lock.json": {
+    "mtime": 1793084170.0,
+    "seen": 1793105796.1261585,
+    "ast_hash": "",
+    "semantic_hash": ""
+  },
+  "src/channel.js": {
+    "mtime": 1793100142.2982757,
+    "seen": 1793690805.3192647,
+    "ast_hash": "a109c45cfd0479861fa2d8f81176e9c1",
+    "semantic_hash": ""
+  },
+  "src/chart/render.js": {
+    "mtime": 1793689016.414194,
+    "seen": 1793690805.3192658,
+    "ast_hash": "c185c873d8ef17e7a5e7bfc16fd860bb",
+    "semantic_hash": ""
+  },
+  "src/config.js": {
+    "mtime": 1793100142.2982757,
+    "seen": 1793690805.319268,
+    "ast_hash": "1512f44c3c2ef8d34d5af34d514bf92e",
+    "semantic_hash": ""
+  },
+  "src/exchanges/index.js": {
+    "mtime": 1793684337.4041405,
+    "seen": 1793690805.3192701,
+    "ast_hash": "e3cdda080d7d3cc0f50df3b976c0ee98",
+    "semantic_hash": ""
+  },
+  "src/format.js": {
+    "mtime": 1793083626.0,
+    "seen": 1793690805.319271,
+    "ast_hash": "4805cfd1b462238a87ba701e9c45c4e4",
+    "semantic_hash": ""
+  },
+  "src/index.js": {
+    "mtime": 1793210200.4414315,
+    "seen": 1793690805.3192723,
+    "ast_hash": "09fd4f44d32365c2389c6f82350ede9a",
+    "semantic_hash": ""
+  },
+  "src/messages.js": {
+    "mtime": 1793690145.405139,
+    "seen": 1793690805.3192732,
+    "ast_hash": "9069be48540bc87099ffabc6022c7474",
+    "semantic_hash": ""
+  },
+  "src/planEdit.js": {
+    "mtime": 1793173942.1129818,
+    "seen": 1793690805.3192742,
+    "ast_hash": "8d885d280b226b7dbf5b3970c69e9a18",
+    "semantic_hash": ""
+  },
+  "src/scanner.js": {
+    "mtime": 1793173892.034223,
+    "seen": 1793690805.3192754,
+    "ast_hash": "166da569c28fccdc6829a347950d3db9",
+    "semantic_hash": ""
+  },
+  "src/store.js": {
+    "mtime": 1793684346.0449142,
+    "seen": 1793690805.3192763,
+    "ast_hash": "4205e7d8063390246956115502002102",
+    "semantic_hash": ""
+  },
+  "src/strategy/analyze.js": {
+    "mtime": 1793174928.813749,
+    "seen": 1793690805.3192775,
+    "ast_hash": "bab4496e87710e19dae3cd36ea2f5495",
+    "semantic_hash": ""
+  },
+  "src/strategy/divergence.js": {
+    "mtime": 1793221155.4627185,
+    "seen": 1793690805.3192785,
+    "ast_hash": "689a39a09c52c65ddfc03c5cf94164b0",
+    "semantic_hash": ""
+  },
+  "src/strategy/indicators.js": {
+    "mtime": 1793086682.5732057,
+    "seen": 1793690805.3192806,
+    "ast_hash": "ce3bfea2a2833a2c1f3a48260b531836",
+    "semantic_hash": ""
+  },
+  "src/strategy/params.js": {
+    "mtime": 1793221162.0998962,
+    "seen": 1793690805.3192816,
+    "ast_hash": "82c23910162640069bffd96d2b4c9121",
+    "semantic_hash": ""
+  },
+  "src/strategy/patterns.js": {
+    "mtime": 1793083584.0,
+    "seen": 1793690805.3192828,
+    "ast_hash": "294adf16829d37d801f01d1bfaae1575",
+    "semantic_hash": ""
+  },
+  "src/strategy/trendline.js": {
+    "mtime": 1793086676.345959,
+    "seen": 1793690805.3192875,
+    "ast_hash": "6af4c77f0a7682a1b6f37da32da4268e",
+    "semantic_hash": ""
+  },
+  "src/telegram/api.js": {
+    "mtime": 1793689107.3446443,
+    "seen": 1793690805.3192897,
+    "ast_hash": "335038090a85cc55f4fca5a2f5563b05",
+    "semantic_hash": ""
+  },
+  "src/telegram/bot.js": {
+    "mtime": 1793689215.6550703,
+    "seen": 1793690805.3192906,
+    "ast_hash": "ff9bcbd5ddaef61e4290adeaaa859b3a",
+    "semantic_hash": ""
+  },
+  "src/telegram/panel.js": {
+    "mtime": 1793689226.0997488,
+    "seen": 1793690805.3192916,
+    "ast_hash": "460add020cfc544605a41e19e70c0eca",
+    "semantic_hash": ""
+  },
+  "src/tracker.js": {
+    "mtime": 1793684354.248253,
+    "seen": 1793690805.3192928,
+    "ast_hash": "fbc6624b77795b28a275f44bcd996140",
+    "semantic_hash": ""
+  },
+  "test/bot.test.js": {
+    "mtime": 1793174078.0774114,
+    "seen": 1793690805.3192978,
+    "ast_hash": "c22ab81e1921175efd1e8f2b138baf6e",
+    "semantic_hash": ""
+  },
+  "test/fixtures.js": {
+    "mtime": 1793174044.5543244,
+    "seen": 1793690805.3192987,
+    "ast_hash": "06ed57538c89943eb7213dde6fdde898",
+    "semantic_hash": ""
+  },
+  "test/panel.test.js": {
+    "mtime": 1793174065.376538,
+    "seen": 1793690805.3193,
+    "ast_hash": "f78ed87c092a7accc35e5ad3be546a5d",
+    "semantic_hash": ""
+  },
+  "test/strategy.test.js": {
+    "mtime": 1793174956.3157387,
+    "seen": 1793690805.3193028,
+    "ast_hash": "c53d7d4080b38919c5576a3a5cc54899",
+    "semantic_hash": ""
+  },
+  "test/tracker.test.js": {
+    "mtime": 1793174065.376538,
+    "seen": 1793690805.319304,
+    "ast_hash": "7b87a1e36d92c97b460c6a5cf81e2ad4",
+    "semantic_hash": ""
+  },
+  ".claude/skills/find-skills/SKILL.md": {
+    "mtime": 1793084170.0,
+    "seen": 1793690805.3193696,
+    "ast_hash": "62b297abdee9aea84c577ab2e04e1974",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1793099512.017319,
+    "seen": 1793690805.3193738,
+    "ast_hash": "a3c70d95dd05f744c5d9ed366f9f78bb",
+    "semantic_hash": ""
+  },
+  "PROGRESS.md": {
+    "mtime": 1793690788.4763472,
+    "seen": 1793690805.319373,
+    "ast_hash": "141855bfbc18786d58031610ddd20710",
+    "semantic_hash": ""
+  },
+  "photo_5985677904060288446_y.jpg": {
+    "mtime": 1793174784.6037178,
+    "seen": 1793690805.3193915,
+    "ast_hash": "7ba70d53ebb59a3885b8cd7678d39928",
+    "semantic_hash": ""
+  },
+  ".claude/skills/backtest-expert/scripts/evaluate_backtest.py": {
+    "mtime": 1793376052.7553732,
+    "seen": 1793690805.319231,
+    "ast_hash": "b3017ac824265c41b39879ff7c7a72cc",
+    "semantic_hash": ""
+  },
+  ".claude/skills/backtest-expert/scripts/tests/conftest.py": {
+    "mtime": 1793376052.7565432,
+    "seen": 1793690805.3192382,
+    "ast_hash": "ae5756076a2a6875824d81845733b0e4",
+    "semantic_hash": ""
+  },
+  ".claude/skills/backtest-expert/scripts/tests/test_evaluate_backtest.py": {
+    "mtime": 1793376052.7565432,
+    "seen": 1793690805.3192415,
+    "ast_hash": "b758da4fce4a4c37b8ddf279fbdb1e49",
+    "semantic_hash": ""
+  },
+  "scripts/backtest-pullback.js": {
+    "mtime": 1793620758.9341671,
+    "seen": 1793690805.3192465,
+    "ast_hash": "7be73d74908add8fccdac43bee0e684f",
+    "semantic_hash": ""
+  },
+  "scripts/backtest-rsi3.js": {
+    "mtime": 1793618386.8420205,
+    "seen": 1793690805.319248,
+    "ast_hash": "fbccf7fb3e04a1229dd1e7dce494837e",
+    "semantic_hash": ""
+  },
+  "scripts/lib/history.js": {
+    "mtime": 1793619976.5851424,
+    "seen": 1793690805.31925,
+    "ast_hash": "5dbf597d39f518f82550fa8baaf99018",
+    "semantic_hash": ""
+  },
+  "scripts/research/engine.js": {
+    "mtime": 1793624570.8383977,
+    "seen": 1793690805.3192515,
+    "ast_hash": "34b04af49056e639c01cb05c5bb31bc2",
+    "semantic_hash": ""
+  },
+  "scripts/research/event-study.js": {
+    "mtime": 1793623747.2309628,
+    "seen": 1793690805.3192523,
+    "ast_hash": "804fb8c9629d735fa3a8fca1617b2063",
+    "semantic_hash": ""
+  },
+  "scripts/research/funding.js": {
+    "mtime": 1793621477.6905866,
+    "seen": 1793690805.3192546,
+    "ast_hash": "23f41c00f7630e0d12a47d14a8ab0584",
+    "semantic_hash": ""
+  },
+  "scripts/research/lib.js": {
+    "mtime": 1793621296.2867837,
+    "seen": 1793690805.3192556,
+    "ast_hash": "44514f150d2e7d619c9338a908c71570",
+    "semantic_hash": ""
+  },
+  "scripts/research/master-audit.js": {
+    "mtime": 1793621327.945611,
+    "seen": 1793690805.3192563,
+    "ast_hash": "9ae65f3903c88b782556190bd6cd58c6",
+    "semantic_hash": ""
+  },
+  "scripts/research/strategies.js": {
+    "mtime": 1793624532.856865,
+    "seen": 1793690805.3192573,
+    "ast_hash": "2c8ced9bbbe74b71c7ea8138baecd3d4",
+    "semantic_hash": ""
+  },
+  "scripts/research/trend-parity.js": {
+    "mtime": 1793684280.0315335,
+    "seen": 1793690805.3192585,
+    "ast_hash": "c2aa7194b5cdec8177d49572e408b5d9",
+    "semantic_hash": ""
+  },
+  "scripts/research/trend-risk.js": {
+    "mtime": 1793684017.1059492,
+    "seen": 1793690805.3192594,
+    "ast_hash": "da842a9c6c9cc5e1dc3acf55908f910f",
+    "semantic_hash": ""
+  },
+  "scripts/research/trend-robust.js": {
+    "mtime": 1793624616.3511517,
+    "seen": 1793690805.3192604,
+    "ast_hash": "27b4d5c58bf370b75f3eecf53df4532e",
+    "semantic_hash": ""
+  },
+  "scripts/rsi3-report.js": {
+    "mtime": 1793618386.9181392,
+    "seen": 1793690805.3192616,
+    "ast_hash": "3361c88b4b197fef56554bb75eeb8000",
+    "semantic_hash": ""
+  },
+  "scripts/webapp-dev.js": {
+    "mtime": 1793210231.7101178,
+    "seen": 1793690805.3192635,
+    "ast_hash": "0f7cd0f35cfd98d8447c5fcb00ebc720",
+    "semantic_hash": ""
+  },
+  "src/chart/trendChart.js": {
+    "mtime": 1793689317.4649577,
+    "seen": 1793690805.3192668,
+    "ast_hash": "bd509e4c2e063b4d146c9dffa05c2a8d",
+    "semantic_hash": ""
+  },
+  "src/drawings.js": {
+    "mtime": 1793262524.2889142,
+    "seen": 1793690805.3192692,
+    "ast_hash": "bdc3074e153f316b3d305ae008613afb",
+    "semantic_hash": ""
+  },
+  "src/strategy/fit.js": {
+    "mtime": 1793264666.8740325,
+    "seen": 1793690805.3192797,
+    "ast_hash": "861698e7f7743c7cd1b853601f43a296",
+    "semantic_hash": ""
+  },
+  "src/strategy/pullback.js": {
+    "mtime": 1793620483.5067604,
+    "seen": 1793690805.319284,
+    "ast_hash": "111b7c496bb154bab1df37a99fc9aa56",
+    "semantic_hash": ""
+  },
+  "src/strategy/rsi3.js": {
+    "mtime": 1793618386.498224,
+    "seen": 1793690805.319285,
+    "ast_hash": "d2aff597adf8350585e2b6319da0e738",
+    "semantic_hash": ""
+  },
+  "src/strategy/trend.js": {
+    "mtime": 1793689299.02588,
+    "seen": 1793690805.3192863,
+    "ast_hash": "a371ed2f8c674c54806ca2d72bb9c9ec",
+    "semantic_hash": ""
+  },
+  "src/strategy/watch.js": {
+    "mtime": 1793262955.4566054,
+    "seen": 1793690805.3192885,
+    "ast_hash": "2168a8a98a27eae6a83fabb98f39e9a0",
+    "semantic_hash": ""
+  },
+  "src/trendRunner.js": {
+    "mtime": 1793689380.7956688,
+    "seen": 1793690805.3192937,
+    "ast_hash": "63f219fc85384fff5f50399fcd2da2fe",
+    "semantic_hash": ""
+  },
+  "src/web/public/app.js": {
+    "mtime": 1793264679.6721997,
+    "seen": 1793690805.3192947,
+    "ast_hash": "9310375067362bba6d85c0561212555c",
+    "semantic_hash": ""
+  },
+  "src/web/public/overlay.js": {
+    "mtime": 1793262785.3575468,
+    "seen": 1793690805.3192954,
+    "ast_hash": "545b3ec4a41e4aaa4aab54fa70ca37b4",
+    "semantic_hash": ""
+  },
+  "src/web/server.js": {
+    "mtime": 1793262546.4055421,
+    "seen": 1793690805.3192968,
+    "ast_hash": "ec827b0b60f058188dbecb04776e1b6b",
+    "semantic_hash": ""
+  },
+  "test/pullback.test.js": {
+    "mtime": 1793620136.2356403,
+    "seen": 1793690805.319301,
+    "ast_hash": "91737be5f2ad0e34e88b3fef7c3f1bff",
+    "semantic_hash": ""
+  },
+  "test/rsi3.test.js": {
+    "mtime": 1793618396.8928149,
+    "seen": 1793690805.3193018,
+    "ast_hash": "045c02b746461ae997a56a2943a74f1f",
+    "semantic_hash": ""
+  },
+  "test/trend.test.js": {
+    "mtime": 1793684269.153114,
+    "seen": 1793690805.3193052,
+    "ast_hash": "32e2fb1e290caace692659e2e73415d4",
+    "semantic_hash": ""
+  },
+  "test/trendRunner.test.js": {
+    "mtime": 1793689418.8477068,
+    "seen": 1793690805.319306,
+    "ast_hash": "8b2f81a5f04a042e2bfafcc61beba984",
+    "semantic_hash": ""
+  },
+  "test/watch.test.js": {
+    "mtime": 1793264249.3324459,
+    "seen": 1793690805.3193073,
+    "ast_hash": "a05bbee72cb1b061f172e98a416b11df",
+    "semantic_hash": ""
+  },
+  "test/web.test.js": {
+    "mtime": 1793226703.6397707,
+    "seen": 1793690805.3193083,
+    "ast_hash": "aa284e73b2716e3716c9e8d6039e4685",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/index.js": {
+    "mtime": 1793259524.312075,
+    "seen": 1793690805.3193102,
+    "ast_hash": "95d56b45a09cf91ec8dcbe58d7eb587d",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/routes/market.js": {
+    "mtime": 1793259524.555826,
+    "seen": 1793690805.3193114,
+    "ast_hash": "9eb12257941b0149f4384a746b5756aa",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/routes/user.js": {
+    "mtime": 1793259524.694147,
+    "seen": 1793690805.3193126,
+    "ast_hash": "1eeb81bb5dda14d845dd2529965c555b",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/services/candleStore.js": {
+    "mtime": 1793259524.9915233,
+    "seen": 1793690805.319314,
+    "ast_hash": "db73e79285c12f8d5caa57aedd277b53",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/services/drawingStore.js": {
+    "mtime": 1793259525.8719625,
+    "seen": 1793690805.3193152,
+    "ast_hash": "d14881f2b25a29f9faa16fc4d9239954",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/services/goldHistory.js": {
+    "mtime": 1793259525.3211246,
+    "seen": 1793690805.3193164,
+    "ast_hash": "95dc7239ebd32ddefa5a046a1409d6dc",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/services/marketEngine.js": {
+    "mtime": 1793259524.8501499,
+    "seen": 1793690805.3193178,
+    "ast_hash": "a2edb2253e16acfd6456fdc17f9d1fe6",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/services/marketHistory.js": {
+    "mtime": 1793259525.1559,
+    "seen": 1793690805.319319,
+    "ast_hash": "eb48632fbae2d9c29cccd5d1029d3f3c",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/services/marketSchedule.js": {
+    "mtime": 1793259525.4431937,
+    "seen": 1793690805.3193202,
+    "ast_hash": "d65875156c4209bd195216d3f1ce6600",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/services/portfolio.js": {
+    "mtime": 1793259553.0280516,
+    "seen": 1793690805.3193216,
+    "ast_hash": "3bbfecfbc3e76bc0a251e04a7f3df081",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/services/priceService.js": {
+    "mtime": 1793259525.5837643,
+    "seen": 1793690805.3193226,
+    "ast_hash": "bfd71cf1edd55d5fc64024933ad8eaab",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/services/upstreamPrices.js": {
+    "mtime": 1793259525.7129188,
+    "seen": 1793690805.3193243,
+    "ast_hash": "0b4350387a1de90bbf6f70a37ab64470",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/server/types.js": {
+    "mtime": 1793259524.4366083,
+    "seen": 1793690805.3193252,
+    "ast_hash": "6e5b5905c2735192068c878d4dcbcf04",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/App.tsx": {
+    "mtime": 1793259523.7951117,
+    "seen": 1793690805.3193264,
+    "ast_hash": "90d44edf92b168e426b58fd813afbf42",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/arena/ArenaChart.tsx": {
+    "mtime": 1793259524.0660021,
+    "seen": 1793690805.3193276,
+    "ast_hash": "ef1e8eb0cee5ba50056a498ba3c1849a",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/arena/ScenarioRangeChart.tsx": {
+    "mtime": 1793259524.1974878,
+    "seen": 1793690805.319329,
+    "ast_hash": "cefad2982676b604d96340c3c76c4c53",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/chart/MazneChart.tsx": {
+    "mtime": 1793259522.5924015,
+    "seen": 1793690805.3193302,
+    "ast_hash": "d24399c2b3213a8cd7cbbcd7f09fd3e4",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/chart/PnlChart.tsx": {
+    "mtime": 1793259522.7239587,
+    "seen": 1793690805.3193324,
+    "ast_hash": "1c151775e0d616b59b3147d42e11ea17",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/chart/TradingViewPanel.tsx": {
+    "mtime": 1793259522.8572674,
+    "seen": 1793690805.3193336,
+    "ast_hash": "a8eee4fd946317c15357c80ee96627d2",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/chart/candles.ts": {
+    "mtime": 1793259521.701599,
+    "seen": 1793690805.319335,
+    "ast_hash": "1e923a258bb5b48aeb8145ab7326179e",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/chart/drawings.ts": {
+    "mtime": 1793259521.832666,
+    "seen": 1793690805.3193362,
+    "ast_hash": "5252a7ea7bf4f16b19aa069899f0d5db",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/chart/geometry.ts": {
+    "mtime": 1793259521.982476,
+    "seen": 1793690805.3193374,
+    "ast_hash": "55b7375104032d6ad03b6b6155f09507",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/chart/persistence.ts": {
+    "mtime": 1793259522.1300707,
+    "seen": 1793690805.3193388,
+    "ast_hash": "7398e5e7eb2dbe267f404788acc87d55",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/chart/positionZone.tsx": {
+    "mtime": 1793259523.0161567,
+    "seen": 1793690805.3193398,
+    "ast_hash": "fbd2692e297d877c5970486a757d64dc",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/chart/timeIndex.ts": {
+    "mtime": 1793259522.307286,
+    "seen": 1793690805.319341,
+    "ast_hash": "c227a6681bab265c6f505e1f7ca69eab",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/chart/tools.tsx": {
+    "mtime": 1793259523.1483996,
+    "seen": 1793690805.3193421,
+    "ast_hash": "e3274eae5b07fcf93c0965590fe21c2a",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/chart/useDrawings.ts": {
+    "mtime": 1793259522.445107,
+    "seen": 1793690805.3193436,
+    "ast_hash": "04b1d82f638a85fa905fc5a97f5ce27d",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/lib/format.ts": {
+    "mtime": 1793259523.5405712,
+    "seen": 1793690805.319345,
+    "ast_hash": "7a572a54ef10ff44b6802469c6ac3f42",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/lib/theme.ts": {
+    "mtime": 1793259523.4101498,
+    "seen": 1793690805.319346,
+    "ast_hash": "fe4fb8a5f74fb23bb3cf669a93331bed",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/pages/Terminal.tsx": {
+    "mtime": 1793259523.92725,
+    "seen": 1793690805.3193471,
+    "ast_hash": "652f19aecb6afe4ecfc3d65014fa5448",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/src/types.ts": {
+    "mtime": 1793259523.2518113,
+    "seen": 1793690805.3193486,
+    "ast_hash": "5e116c582433378c5f170fd7f48a4bcd",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/tests/candleStore.test.js": {
+    "mtime": 1793259526.1560977,
+    "seen": 1793690805.31935,
+    "ast_hash": "a9552c54c3a061184385276d9360d357",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/tests/candles.test.js": {
+    "mtime": 1793259526.3204422,
+    "seen": 1793690805.319351,
+    "ast_hash": "7704e3d1ff040af4b465de32486ea191",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/tests/chartDrawing.test.js": {
+    "mtime": 1793259526.460495,
+    "seen": 1793690805.3193524,
+    "ast_hash": "bcb0ef87ae7c5ed95f034663bfd5519c",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/tests/chartDrawings.test.ts": {
+    "mtime": 1793259526.606509,
+    "seen": 1793690805.3193536,
+    "ast_hash": "e0c9d62ae59b5922aa7d647a829124e3",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/tests/chartTokens.test.js": {
+    "mtime": 1793259526.7129662,
+    "seen": 1793690805.3193548,
+    "ast_hash": "0689bb7ddca6093bead15ca537e044ca",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/tests/drawingCoverage.test.js": {
+    "mtime": 1793259526.8888788,
+    "seen": 1793690805.3193562,
+    "ast_hash": "cab0b8b9f9a31a12be1800298c6a78a7",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/tests/drawingStore.test.js": {
+    "mtime": 1793259527.0220435,
+    "seen": 1793690805.3193574,
+    "ast_hash": "3bb1ac2cd579fbbc7f78e8fa9a9802a7",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/tests/goldHistory.test.js": {
+    "mtime": 1793259527.1865313,
+    "seen": 1793690805.3193588,
+    "ast_hash": "a3abe7bfd9ddacf648d6d1ec4387fe26",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/tests/marketEngine.test.js": {
+    "mtime": 1793259527.3067706,
+    "seen": 1793690805.31936,
+    "ast_hash": "2f97050188e86af0a9343619114ce7e2",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/tests/marketHistory.test.js": {
+    "mtime": 1793259527.4559417,
+    "seen": 1793690805.319361,
+    "ast_hash": "12a4d65a04c55e6c5f5b11868cede443",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/tests/marketSchedule.test.js": {
+    "mtime": 1793259527.5707145,
+    "seen": 1793690805.3193624,
+    "ast_hash": "c81da174899ae095b9682dad9e433c69",
+    "semantic_hash": ""
+  },
+  ".claude/skills/backtest-expert/SKILL.md": {
+    "mtime": 1793376052.7533784,
+    "seen": 1793690805.319363,
+    "ast_hash": "082a84233040515164baec03b10c3575",
+    "semantic_hash": ""
+  },
+  ".claude/skills/backtest-expert/references/failed_tests.md": {
+    "mtime": 1793376052.754376,
+    "seen": 1793690805.319364,
+    "ast_hash": "72a4096050ff868246b7049cb941c851",
+    "semantic_hash": ""
+  },
+  ".claude/skills/backtest-expert/references/methodology.md": {
+    "mtime": 1793376052.754376,
+    "seen": 1793690805.319365,
+    "ast_hash": "83b1f58918177f424dc30d803903203d",
+    "semantic_hash": ""
+  },
+  ".claude/skills/backtest-expert/requirements.txt": {
+    "mtime": 1793376052.754376,
+    "seen": 1793690805.3193662,
+    "ast_hash": "7915e183f0762e9803c2bc6833ce00ce",
+    "semantic_hash": ""
+  },
+  ".claude/skills/backtesting-frameworks/SKILL.md": {
+    "mtime": 1793375995.768193,
+    "seen": 1793690805.3193672,
+    "ast_hash": "0f25385c7e86e68add404a130adea53e",
+    "semantic_hash": ""
+  },
+  ".claude/skills/backtesting-frameworks/references/details.md": {
+    "mtime": 1793375995.769156,
+    "seen": 1793690805.3193681,
+    "ast_hash": "bcd631d7147f5b5606e0e7dd5319c841",
+    "semantic_hash": ""
+  },
+  ".claude/skills/risk-metrics-calculation/SKILL.md": {
+    "mtime": 1793376019.1458714,
+    "seen": 1793690805.3193705,
+    "ast_hash": "e0230fbfc217a0777d89a1637e403b62",
+    "semantic_hash": ""
+  },
+  ".claude/skills/risk-metrics-calculation/references/details.md": {
+    "mtime": 1793376019.1468692,
+    "seen": 1793690805.3193715,
+    "ast_hash": "20175608f9888522664bf1bd4b367166",
+    "semantic_hash": ""
+  },
+  "docs/research/00-pullback-1h.md": {
+    "mtime": 1793624649.0506854,
+    "seen": 1793690805.3193748,
+    "ast_hash": "1f007884b98e182683545c769de6503e",
+    "semantic_hash": ""
+  },
+  "docs/research/00-pullback-4h.md": {
+    "mtime": 1793624649.0836356,
+    "seen": 1793690805.3193758,
+    "ast_hash": "01bbce3bac8c301e5375ab0873bca05c",
+    "semantic_hash": ""
+  },
+  "docs/research/00-rsi3-365d.md": {
+    "mtime": 1793624649.1177957,
+    "seen": 1793690805.319377,
+    "ast_hash": "caed1c57f3f9fb782eb1d9ff4ce94a9e",
+    "semantic_hash": ""
+  },
+  "docs/research/01-master-audit.md": {
+    "mtime": 1793624648.8305252,
+    "seen": 1793690805.319378,
+    "ast_hash": "ba327921b14b4dcfd25d7b72a694a671",
+    "semantic_hash": ""
+  },
+  "docs/research/02-event-study.md": {
+    "mtime": 1793624648.903597,
+    "seen": 1793690805.3193789,
+    "ast_hash": "04421b2ed34a769f80efb61162cdf97d",
+    "semantic_hash": ""
+  },
+  "docs/research/03-strategies.md": {
+    "mtime": 1793624648.9520283,
+    "seen": 1793690805.31938,
+    "ast_hash": "b76e0ce1ecca88dd4707dd971c8ea45a",
+    "semantic_hash": ""
+  },
+  "docs/research/04-trend-robust.md": {
+    "mtime": 1793624649.0034046,
+    "seen": 1793690805.319381,
+    "ast_hash": "695e8c36e2e0e3df355975f98449abf2",
+    "semantic_hash": ""
+  },
+  "docs/research/05-trend-risk.md": {
+    "mtime": 1793684642.7403524,
+    "seen": 1793690805.3193817,
+    "ast_hash": "fb2482252245e9b334a873fff11ed6f1",
+    "semantic_hash": ""
+  },
+  "docs/research/README.md": {
+    "mtime": 1793684668.5368924,
+    "seen": 1793690805.319388,
+    "ast_hash": "705d1be6898afffe3a0459d081387a46",
+    "semantic_hash": ""
+  },
+  "src/web/public/index.html": {
+    "mtime": 1793262640.7736807,
+    "seen": 1793690805.3193889,
+    "ast_hash": "7b7f3bdad5b7110265d02f3f3f664c87",
+    "semantic_hash": ""
+  },
+  "\u0686\u0627\u0631\u062a \u06af\u0644\u062f\u0645\u06cc/README.md": {
+    "mtime": 1793259600.1025138,
+    "seen": 1793690805.3193903,
+    "ast_hash": "6d8fe2cc77e044b99975927bf7362523",
+    "semantic_hash": ""
+  },
+  "photo_5988074465746685925_y.jpg": {
+    "mtime": 1793306158.9441528,
+    "seen": 1793690805.3193927,
+    "ast_hash": "3cc208a794e1f916ca7cfd32f68442e6",
+    "semantic_hash": ""
+  },
+  "photo_5988074465746685926_y.jpg": {
+    "mtime": 1793306156.6949916,
+    "seen": 1793690805.3193936,
+    "ast_hash": "966cca24b1f20ce8a7bc56c2e965bf7c",
+    "semantic_hash": ""
+  }
+}

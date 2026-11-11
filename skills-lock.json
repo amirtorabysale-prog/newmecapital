@@ -1,11 +1,29 @@
 {
   "version": 1,
   "skills": {
+    "backtest-expert": {
+      "source": "tradermonty/claude-trading-skills",
+      "sourceType": "github",
+      "skillPath": "skills/backtest-expert/SKILL.md",
+      "computedHash": "5f42bce729acb76974e5b2be3000c6a2906f9aac03aad40c9f6aec189006a786"
+    },
+    "backtesting-frameworks": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/quantitative-trading/skills/backtesting-frameworks/SKILL.md",
+      "computedHash": "792069fc176d944805f2136a8f98aa7c77ef138c25678baa03d282c5fe18159a"
+    },
     "find-skills": {
       "source": "vercel-labs/skills",
       "sourceType": "github",
       "skillPath": "skills/find-skills/SKILL.md",
       "computedHash": "b146008599c31057cef1c145774cea5d5afb30e8f43fa802e47a4b461419aaaf"
+    },
+    "risk-metrics-calculation": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/quantitative-trading/skills/risk-metrics-calculation/SKILL.md",
+      "computedHash": "40015a8745324f5d73b7354d94c937efea424c94fd2c96702e7258c96bf2e5a9"
     }
   }
 }

@@ -1,0 +1,1333 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String    @id @default(cuid())
+  phone               String    @unique
+  email               String?
+  displayName         String?
+  // تصویر اختصاصیِ آپلودشده — هنوز استفاده نمی‌شود، برای وقتی که آپلود اضافه شود.
+  avatarUrl           String?
+  // یکی از آواتارهای آماده (server/services/avatars.js). بعضی‌شان با سطح باز می‌شوند.
+  avatarId            String?
+  role                String    @default("user")
+  /**
+   * دسترسیِ بخش‌به‌بخشِ ادمین — `{ lessons: 'edit', users: 'view' }`.
+   *
+   * ⚠️ فقط برای `role = "admin"` معنی دارد و به‌تنهایی هیچ دری باز نمی‌کند؛
+   * `requireAdmin` همچنان اول باید رد شود. بخشی که این‌جا نیامده باشد یعنی
+   * `none` — نبودِ دسترسی، نبود است نه «همه‌چیز».
+   *
+   * ⚠️ ارشد (`ADMIN_PHONES`) این ستون را اصلاً نمی‌خواند: دسترسیِ او از متغیرِ
+   * محیطی می‌آید تا هیچ نوشتنی در دیتابیس نتواند ارشد بسازد یا ارشد را خلع کند.
+   * تعریفِ بخش‌ها و سطح‌ها در `server/services/adminScopes.js`.
+   */
+  adminScopes         Json?
+  // آخرین هفته‌ای که کاربر گزارشش را دیده (کلید تاریخِ شنبه). خودِ گزارش ذخیره
+  // نمی‌شود — هر بار از روی معاملات واقعی ساخته می‌شود تا هیچ‌وقت بیات نشود.
+  // این فقط برای نشانِ «گزارش تازه» است.
+  lastReportSeen      String?
+  isVerified          Boolean   @default(false)
+  // ── مسیر شروع ──
+  // خودِ قدم‌ها ذخیره نمی‌شوند؛ از داده‌ی واقعی خوانده می‌شوند
+  // (server/services/onboardingJourney.js توضیح می‌دهد چرا). این دو فقط
+  // تصمیم‌های خودِ کاربرند: «فعلاً پنهانش کن» و «کِی تمام شد».
+  journeySkippedAt    DateTime?
+  journeyCompletedAt  DateTime?
+  // ── تورهای راهنمای هوگو ──
+  // یک تور به‌ازای هر بخشِ سایت (src/hugo/tour/types.ts: TOUR_ROUTE)، هرکدام
+  // وضعیت + قدمِ جاری‌اش را این‌جا نگه می‌دارد — دقیقاً مثل journeySkippedAt
+  // بالا: به حساب بسته است، نه به مرورگر، پس با تعویضِ دستگاه یا حساب گم
+  // نمی‌شود و قاطی نمی‌شود. غایب بودنِ یک کلید یعنی «هنوز شروع نشده».
+  //
+  // ⚠️ چرا JSON و نه ستون: تعدادِ تورها با تعدادِ بخش‌های سایت عوض می‌شود.
+  // با ستون، افزودنِ یک بخش یعنی دو ستونِ تازه و یک migration — و شکلِ
+  // { [tourId]: { status, stepId } } همان چیزی است که کلاینت هم دارد.
+  hugoTourState       Json?
+  // ⚠️ چهار ستونِ قدیمی عمداً مانده‌اند و فقط *خوانده* می‌شوند: کاربرانی که
+  // تورِ قدیمی را تمام کرده‌اند نباید دوباره از اول ببینندش.
+  // server/services/hugoTour.js آن‌ها را یک‌بار به شکلِ تازه ترجمه می‌کند.
+  hugoQuickTourStatus String?
+  hugoQuickTourStepId String?
+  hugoAdvTourStatus   String?
+  hugoAdvTourStepId   String?
+  // ── اشتراک ──
+  // هیچ درگاه پرداختی وصل نیست: کاربر از صفحه‌ی قیمت‌گذاری درخواست می‌دهد (یک
+  // IssueReport با category=subscription)، و ادمین بعد از احراز پرداخت همین‌جا
+  // پلن را دستی فعال می‌کند (server/services/plans.js توضیح می‌دهد چرا).
+  // نقشِ admin همیشه سقفِ همه‌ی محدودیت‌ها را دارد، صرف‌نظر از این دو فیلد —
+  // این پنل خودِ ادمین باید بدون هیچ قفلی قابل تست باشد.
+  plan                String    @default("free")
+  // null یعنی همیشگی. ادمین می‌تواند هنگام فعال‌سازی یک تاریخ انقضا هم بگذارد.
+  planExpiresAt       DateTime?
+  planActivatedAt     DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // ارتباط کاربر با شناسنامه ژنتیکی‌اش
+  tradingDNA UserTradingDNA?
+
+  trades     Trade[]
+  otpRecords OtpRecord[]
+
+  // 🚀 فاز ۳ و ۴: تاریخچه هوش مصنوعی و مدال‌ها
+  aiMessages   AiMessage[]
+  achievements UserAchievement[]
+
+  // مسیر چندروزه‌ی شناخت کاربر
+  profileAnswers ProfileAnswer[]
+
+  tradeAnalyses TradeAnalysis[]
+  dailyPlans    DailyPlan[]
+  commitments   Commitment[]
+  chartDrawings ChartDrawing[]
+
+  // 🎓 سیستم آموزش تعاملی
+  attempts          Attempt[]
+  skillProgress     SkillProgress[]
+  lessonProgress    LessonProgress[]
+  quizAttempts      QuizAttempt[]
+  quizSessions      QuizSession[]
+  questionExposures QuestionExposure[]
+  questionReports   QuestionReport[]
+  exerciseProgress  ExerciseProgress[]
+  issueReports      IssueReport[]
+  hugoTourEvents    HugoTourEvent[]
+}
+
+/**
+ * لاگِ رویدادهای تورِ هوگو — برای تحلیل (کدام قدم بیشتر رد می‌شود، تور کجا
+ * بسته می‌شود، چند درصد کامل می‌شود)، نه برای resume. آن کار را ستون‌های
+ * hugoQuickTourStatus/hugoAdvTourStatus روی User انجام می‌دهند؛ این‌جا فقط
+ * افزوده می‌شود، هیچ‌وقت به‌روزرسانی نمی‌شود — دقیقاً مثل SiteContentHistory.
+ */
+model HugoTourEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  tourId     String
+  eventType  String
+  stepId     String?
+  stepIndex  Int?
+  totalSteps Int?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tourId, eventType])
+}
+
+/**
+ * گزارش مشکل / درخواست پشتیبانی — از هر صفحه‌ی سایت قابل ارسال است.
+ * ⚠️ فقط متن اینجا ذخیره می‌شود. عکس/فیلم روی سرور آپلود نمی‌شود — کاربر آن را
+ * مستقیم به آیدی تلگرانِ پشتیبانی می‌فرستد (SUPPORT_TELEGRAM_USERNAME) و
+ * trackingCode را ضمیمه می‌کند تا ادمین بفهمد آن پیام مال کدام گزارش است.
+ * راه‌اندازیِ آپلود/بات تلگرام برای این مرحله زیادی است؛ وقتی حجم گزارش‌ها
+ * توجیه کرد می‌شود اضافه‌اش کرد.
+ */
+model IssueReport {
+  id           String    @id @default(cuid())
+  userId       String
+  // bug | subscription | other — دسته‌ی «subscription» از صفحه‌ی قیمت‌گذاری
+  // می‌آید و هیچ فرقی با یک گزارش عادی ندارد جز برچسبی که در پنل ادمین رنگ
+  // جداگانه می‌گیرد.
+  category     String    @default("bug")
+  page         String
+  message      String    @db.Text
+  trackingCode String    @unique
+  // open | reviewed | resolved
+  status       String    @default("open")
+  adminNote    String?
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+
+  // ── سلامت سیستم — همبستگیِ گزارش کاربر با خطای واقعی (فاز ۲) ──
+  // همه‌ی این‌ها اختیاری و افزایشی‌اند: گزارشِ قبل از این فاز هم دقیقاً مثل
+  // قبل کار می‌کند. correlationId زنجیره‌ی «گزارش کاربر → درخواست سرور →
+  // خطای Sentry → لاگ سرور» را قابل ردیابی می‌کند.
+  correlationId String?
+  userAgent     String?
+  appRelease    String?
+  sentryEventId String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([correlationId])
+}
+
+/**
+ * رکورد داخلیِ حادثه — نه جایگزینِ Sentry، فقط لایه‌ی عملیاتیِ گلدمی رویش.
+ * فقط خطاهای HIGH/CRITICAL خودکار این‌جا می‌نشینند (server/services/incidents.js
+ * توضیح می‌دهد چرا)؛ MEDIUM/LOW فقط در Sentry/لاگ می‌مانند تا این جدول شلوغ نشود.
+ * fingerprint یعنی «همین خطا، از همین مسیر» — تکرارها occurrences را زیاد
+ * می‌کنند، نه ردیف تازه می‌سازند.
+ */
+model Incident {
+  id              String    @id @default(cuid())
+  fingerprint     String
+  title           String
+  severity        String // CRITICAL | HIGH | MEDIUM | LOW
+  source          String // server | client
+  route           String?
+  status          String    @default("NEW") // NEW | INVESTIGATING | FIXED | IGNORED
+  firstSeenAt     DateTime  @default(now())
+  lastSeenAt      DateTime  @default(now())
+  occurrences     Int       @default(1)
+  /**
+   * فهرستِ userId های متمایزِ دیده‌شده، حداکثر ۲۰۰ تا (server/services/incidents.js).
+   * عدد «کاربران درگیر» از طولِ همین آرایه محاسبه می‌شود — یک منبع حقیقت،
+   * نه دو شمارنده‌ی جدا که می‌توانند از هم جدا بیفتند.
+   */
+  affectedUserIds Json      @default("[]")
+  release         String?
+  sentryEventId   String?
+  notes           String?
+  resolvedAt      DateTime?
+  resolvedBy      String?
+
+  @@unique([fingerprint])
+  @@index([status, severity, lastSeenAt])
+}
+
+model UserTradingDNA {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  // ژن‌های پایه
+  level         String @default("beginner")
+  daysActive    Int    @default(1)
+  totalTrades   Int    @default(0)
+  winRate       Float  @default(0)
+  totalPnl      Int    @default(0)
+  avgRiskReward Float  @default(0)
+
+  // ژن‌های روانی و رفتاری
+  greedLevel      Int    @default(50)
+  fearLevel       Int    @default(50)
+  disciplineScore Int    @default(50)
+  revengeTrades   Int    @default(0)
+  fomoTrades      Int    @default(0)
+  dominantTrait   String @default("neutral")
+
+  // تحلیل متنی هوش مصنوعی
+  aiAnalysis      String  @default("هنوز دیتای کافی برای تحلیل ژنتیک معاملاتی شما وجود ندارد. حداقل ۵ معامله انجام دهید.")
+  lastChatSummary String?
+
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ✅ مدل ذخیره تاریخچه چت‌های هوش مصنوعی (فاز ۳)
+model AiMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  role      String // 'user' یا 'mentor'
+  content   String   @db.Text
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, createdAt])
+}
+
+model Trade {
+  id           String    @id @default(cuid())
+  userId       String
+  type         String
+  goldAmount   Float
+  entryPrice   Int
+  exitPrice    Int?
+  pnl          Int?
+  status       String    @default("open")
+  notes        String?
+  // چک‌این احساسیِ اختیاری، لحظه‌ی ثبت سفارش: ۱ (آروم) تا ۵ (مضطرب/هیجانی).
+  // Trade DNA بعد از چند ده معامله همبستگیِ این عدد را با نتیجه نشان می‌دهد
+  // (server/services/emotionInsight.js). فیلدِ قبلاً بلااستفاده‌ی «emotion»
+  // (String) همین‌جا به‌جایش استفاده می‌شود.
+  emotionScore Int?
+  createdAt    DateTime  @default(now())
+  closedAt     DateTime?
+
+  // 🧬 در لحظه‌ی تسویه محاسبه و روی خود معامله ذخیره می‌شوند (نه فقط یک شمارنده‌ی
+  // جداگانه) تا Trading DNA همیشه قابل بازمحاسبه از تاریخچه‌ی واقعی باشد.
+  isFomo    Boolean @default(false)
+  isRevenge Boolean @default(false)
+
+  // 🎯 حد سود / حد ضرر — اختیاری، در لحظه‌ی ثبت سفارش تعیین می‌شوند و توسط
+  // حلقه‌ی تیک بازار (server/index.js) به‌صورت خودکار و مستقل از اتصال کاربر پایش می‌شوند.
+  takeProfit Int?
+  stopLoss   Int?
+
+  // ⚖️ معاملات تعهدی. leverage = ۱ یعنی نقدی (طلا واقعاً جابه‌جا می‌شود).
+  // بزرگ‌تر از ۱ یعنی تعهدی: طلایی تحویل نمی‌شود و به‌جای کل ارزش پوزیشن، فقط
+  // `margin` از موجودی قفل می‌شود. margin در لحظه‌ی باز کردن ثبت می‌شود تا بعداً
+  // با تغییر قیمت یا فرمول، وجه تضمینِ پوزیشن‌های باز جابه‌جا نشود.
+  leverage Int  @default(1)
+  margin   Int?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 🚀 قفل سرعتی (Tier 2 Fix)
+  @@index([userId])
+  @@index([userId, status, closedAt])
+  @@index([userId, createdAt])
+}
+
+/**
+ * پیمان روزانه — چیزی که کاربر *پیش از* اولین معامله‌ی روز تعیین می‌کند.
+ * گزارش پایان روز ذخیره نمی‌شود؛ هر بار از روی همین پیمان و معاملات واقعی همان
+ * روز ساخته می‌شود، پس هیچ‌وقت با داده ناسازگار نمی‌شود.
+ * date کلید روزِ *تهران* است (YYYY-MM-DD)، نه UTC — وگرنه مرز روز برای کاربر
+ * ایرانی نیمه‌شبِ اشتباهی می‌افتاد و معاملات شب به فردا نسبت داده می‌شدند.
+ */
+model DailyPlan {
+  id        String   @id @default(cuid())
+  userId    String
+  date      String
+  bias      String
+  maxLoss   Int
+  maxTrades Int
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+/**
+ * تعهدی که مربی به کاربر داده — و بر اساسش او را پیگیری می‌کند.
+ * بدون این جدول، سایت قانون می‌داد و فراموشش می‌کرد؛ مربی حتی نمی‌دانست چنین
+ * قانونی وجود دارد، پس هیچ‌وقت نمی‌پرسید «چطور پیش رفت؟». نصیحتِ بدون پیگیری،
+ * کوچینگ نیست.
+ * patternId می‌گوید تعهد از کدام الگو آمده، و همان تعیین می‌کند رعایتش چطور
+ * سنجیده شود (server/services/commitments.js).
+ */
+model Commitment {
+  id         String    @id @default(cuid())
+  userId     String
+  patternId  String
+  rule       String
+  meta       Json?
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+  outcome    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, resolvedAt])
+}
+
+/**
+ * رسم‌های کاربر روی چارت — خط روند، سطوح، کانال، ناحیه، فیبوناچی، یادداشت.
+ * 🐛 اول فقط در localStorage بودند. کاربر گزارش داد با خروج و ورود دوباره همه‌چیز
+ * می‌پرد — چون خروج کل localStorage را پاک می‌کند، و پاک نکردنش هم غلط بود:
+ * اگر کس دیگری روی همان مرورگر وارد می‌شد، تحلیل نفر قبلی را می‌دید.
+ * حالا به حساب کاربر بسته است، پس با خروج و ورود می‌ماند و بین دستگاه‌ها هم
+ * همگام است.
+ * ⚠️ نقاط با **زمان** ذخیره می‌شوند نه شماره‌ی کندل (src/chart/timeIndex.ts).
+ * شماره‌ی کندل بدون آرایه‌ی همان لحظه بی‌معناست و بین دو نشست یکی نمی‌ماند.
+ */
+model ChartDrawing {
+  id        String   @id
+  userId    String
+  kind      String
+  /**
+   * آرایه‌ی [{ time, price }] — طولش به نوع رسم بستگی دارد.
+   */
+  points    Json
+  /**
+   * فقط برای ابزار یادداشت.
+   */
+  text      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/**
+ * تاریخچه‌ی کندل‌های مظنه.
+ * پیش‌تر فقط در حافظه‌ی پروسه نگه داشته می‌شد، پس هر ری‌استارت سرور — که در Railway
+ * با هر استقرار جدید رخ می‌دهد — کل چارت را پاک می‌کرد و کاربر از صفر شروع می‌کرد.
+ * زمان (ثانیه‌ی یونیکس) کلید طبیعی کندل است، پس همان کلید اصلی هم هست.
+ */
+model MarketCandle {
+  time  Int @id
+  open  Int
+  high  Int
+  low   Int
+  close Int
+}
+
+/**
+ * بایگانی بلندمدتِ پروکسی انس جهانی برای تایم‌فریم‌های ترمینال.
+ * جدا از MarketCandle نگه داشته می‌شود تا دادهٔ واقعی Goldemy همیشه قابل تشخیص
+ * و در بازه‌های هم‌پوشان صاحب اولویت باشد.
+ */
+model MarketHistoryCandle {
+  time       Int
+  timeframe  Int
+  open       Int
+  high       Int
+  low        Int
+  close      Int
+  source     String
+  importedAt DateTime @default(now())
+
+  @@id([time, timeframe])
+  @@index([timeframe, time])
+}
+
+/**
+ * پاسخ‌های مسیر شناخت کاربر.
+ * سؤال‌ها در server/services/profileQuestions.js تعریف شده‌اند (نه در دیتابیس)
+ * چون متن و گزینه‌ها بخشی از محصول‌اند نه داده‌ی کاربر؛ اینجا فقط انتخاب کاربر
+ * ذخیره می‌شود. کلید مرکب یعنی هر سؤال برای هر کاربر یک پاسخ دارد.
+ */
+model ProfileAnswer {
+  id         String   @id @default(cuid())
+  userId     String
+  questionId String
+  value      String
+  answeredAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([userId, answeredAt])
+}
+
+/**
+ * تحلیل‌های تک‌معامله‌ای که مربی انجام داده.
+ * دو کار می‌کند: تحلیل قبلی را نگه می‌دارد تا کاربر بتواند دوباره ببیندش بدون
+ * هزینه‌ی یک فراخوانی جدید، و مبنای شمارش سهمیه‌ی روزانه است — همان چیزی که
+ * بعداً به پلن اشتراک وصل می‌شود.
+ */
+model TradeAnalysis {
+  id        String   @id @default(cuid())
+  userId    String
+  tradeId   String
+  content   String   @db.Text
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([tradeId])
+}
+
+/**
+ * کلید–مقدارِ سطحِ برنامه.
+ * فعلاً یک کاربرد دارد: علامت‌گذاری مهاجرت‌های یک‌بارمصرفِ داده، تا با هر
+ * ری‌استارت سرور دوباره اجرا نشوند. بدون چنین علامتی، مهاجرتِ واحدها با هر
+ * استقرار دوباره اجرا می‌شد و هر بار قیمت‌ها را یک بار دیگر تقسیم می‌کرد.
+ */
+model AppMeta {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+/**
+ * سیاهه‌ی کارهای ادمین.
+ * هر عملیاتِ تغییردهنده در پنل ادمین اینجا ثبت می‌شود — چه کسی، چه کاری، روی
+ * چه کاربری، و با چه جزئیاتی. بدون این، «چه کسی حساب فلانی را ریست کرد؟» هیچ
+ * جوابی ندارد، و پنلی که پاسخگو نباشد خودش یک ریسک است.
+ * فقط خواندنی است: هیچ مسیری برای حذف یا ویرایشش وجود ندارد.
+ */
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String
+  actorPhone  String
+  action      String
+  targetId    String?
+  targetPhone String?
+  detail      Json?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId])
+}
+
+/**
+ * اعلان سراسری — تنها راهی که صاحب سایت می‌تواند با همه‌ی کاربران حرف بزند.
+ * پیامک هزینه دارد و ایمیل همه را نداریم؛ بدون این، اطلاع دادنِ یک قطعی یا یک
+ * قابلیت تازه هیچ مسیری ندارد.
+ */
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  tone      String   @default("info") // info | warning | success
+  active    Boolean  @default(true)
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([active, createdAt])
+}
+
+/**
+ * محتوای قابل‌ویرایشِ ادمین — سیستم «مدیریت محتوا و ظاهر».
+ * فقط کلید/فضای‌نامی که در server/services/siteContentRegistry.js تعریف شده
+ * می‌تواند اینجا ردیف بگیرد؛ سرور هر (namespace,key) ناشناخته را رد می‌کند —
+ * این آلوولیست، نه این جدول، همان چیزی است که جلوی نوشتنِ کلیدهای دلخواه
+ * (تنظیمات امنیتی، منطق معاملاتی و…) را می‌گیرد.
+ * یک ردیف تا وقتی ادمین آن را ویرایش نکرده اصلاً وجود ندارد. نبودنش یعنی
+ * «مقدار پیش‌فرضِ کد را نشان بده» — همان مقداری که همین امروز، پیش از این
+ * سیستم، در کد بود. این هم فال‌بکِ امن در قطعیِ دیتابیس است و هم تضمین می‌کند
+ * راه‌اندازیِ اولیه‌ی این سیستم هیچ متنی را روی سایت عوض نمی‌کند.
+ */
+model SiteContent {
+  id             String   @id @default(cuid())
+  namespace      String
+  key            String
+  /**
+   * شکل و اعتبارسنجیِ value را نوعِ ثبت‌شده در registry تعیین می‌کند، نه این ستون.
+   */
+  value          Json
+  updatedBy      String?
+  updatedByPhone String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([namespace, key])
+  @@index([namespace])
+}
+
+/**
+ * تاریخچه‌ی تغییرات محتوا — فقط‌خواندنی و کامل، برای بازگردانی به هر نسخه‌ی قبلی.
+ * الگویش دقیقاً مثل QuestionVersion است: هر ویرایش، پیش از اعمال، یک عکسِ فوری
+ * از حالتِ قبلی می‌سازد.
+ * ⚠️ contentId عمداً بدون رابطه‌ی رسمی به SiteContent است — دقیقاً مثل
+ * AuditLog.actorId. «بازگردانی به پیش‌فرض» ردیفِ SiteContent را حذف می‌کند
+ * (schema همین فایل، بالاتر)؛ اگر این‌جا رابطه‌ی onDelete:Cascade می‌بود، همان
+ * حذف کل تاریخچه‌ی همین کلید را هم با خودش می‌برد — یعنی درست همان لحظه‌ای که
+ * تاریخچه بیشترین ارزش را دارد (بعد از یک بازگردانی)، خودش پاک می‌شد. تاریخچه
+ * با (namespace,key) خوانده می‌شود، نه با دنبال‌کردنِ رابطه.
+ */
+model SiteContentHistory {
+  id             String   @id @default(cuid())
+  contentId      String
+  namespace      String
+  key            String
+  oldValue       Json?
+  newValue       Json
+  changedBy      String
+  changedByPhone String
+  createdAt      DateTime @default(now())
+
+  @@index([namespace, key, createdAt])
+}
+
+model OtpRecord {
+  id        String   @id @default(cuid())
+  userId    String
+  code      String
+  purpose   String   @default("login")
+  attempts  Int      @default(0)
+  verified  Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, verified])
+}
+
+// ✅ مدل گم‌شده برای ذخیره مدال‌ها و افتخارات کاربر (فاز ۴)
+model UserAchievement {
+  id          String   @id @default(cuid())
+  userId      String
+  badgeName   String
+  description String?
+  unlockedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 🎓 سیستم آموزش تعاملی — مسیر مهارت و میدان تصمیم
+// ══════════════════════════════════════════════════════════════════════════
+//
+// این بخش هنوز به کاربر نمایش داده نمی‌شود؛ فاز اول فقط اسکلت داده است.
+//
+// ⚠️ مهم‌ترین تصمیم این بخش: معاملاتِ تمرینی در جدول جدا (ScenarioTrade) ذخیره
+// می‌شوند، نه در Trade. دلیلش را در توضیح همان مدل بخوان — نادیده گرفتنش کل
+// سیستم رفتاری فعلی سایت را خراب می‌کند.
+
+/**
+ * یک مسیر آموزشی. فعلاً یکی بیشتر لازم نیست، ولی ساختارش از ابتدا چند‌تایی است.
+ */
+model Course {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  title       String
+  description String?
+  order       Int      @default(0)
+  published   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lessons Lesson[]
+
+  @@index([published, order])
+}
+
+/**
+ * یک جلسه = یک مهارت مشخص (خط روند، حد ضرر، FOMO و…).
+ * skill کلید پایدارِ مهارت است و به SkillProgress وصل می‌شود؛ عنوان می‌تواند
+ * عوض شود ولی این نباید.
+ * videoUrl فقط شناسه‌ی ویدئوی میزبانی‌شده در بیرون است. Railway یک CDN نیست و
+ * سرو کردن ویدئو از آنجا هم گران است هم برای کاربر ایرانی کند.
+ */
+model Lesson {
+  id                String   @id @default(cuid())
+  courseId          String
+  skill             String
+  title             String
+  summary           String?
+  body              String?  @db.Text
+  videoUrl          String?
+  /**
+   * بلوک‌های امن محتوا؛ متن body قدیمی برای سازگاری حفظ می‌شود.
+   */
+  contentBlocks     Json?
+  objectives        Json?
+  estimatedMinutes  Int      @default(10)
+  quizPassScore     Int      @default(80)
+  exercisePassScore Int      @default(70)
+  arenaPassScore    Int      @default(70)
+  exerciseRequired  Boolean  @default(true)
+  arenaRequired     Boolean  @default(true)
+  order             Int      @default(0)
+  published         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  course        Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  questionLinks LessonQuestion[]
+  exercises     Exercise[]
+  scenarios     Scenario[]
+  progress      LessonProgress[]
+  quizAttempts  QuizAttempt[]
+  quizSessions  QuizSession[]
+
+  @@index([courseId, order])
+  @@index([skill])
+}
+
+/**
+ * سؤال مفهومی — عضو بانک سؤال، نه قفلِ یک درس.
+ * نمره‌دهی‌اش کاملاً قطعی است و هیچ‌وقت به AI سپرده نمی‌شود.
+ * ⚠️ عمداً هیچ ارجاعی به Lesson ندارد. پیوند با درس‌ها از طریق LessonQuestion
+ * است — همان چیزی که «بانک» را بانک می‌کند: یک سؤال با skill/topic مشخص
+ * می‌تواند به چند درسِ هم‌موضوع پیشنهاد و وصل شود، نه فقط یکی.
+ */
+model QuizQuestion {
+  id          String    @id @default(cuid())
+  question    String
+  /**
+   * [{ value, label }]
+   */
+  options     Json
+  correct     String
+  explanation String?
+  skill       String?
+  topic       String?
+  difficulty  String    @default("medium")
+  type        String    @default("single-choice")
+  /**
+   * تصویرِ سؤال — اختیاری. `{ kind: 'candles', candles: [[t,o,h,l,c]...], marks, level, caption }`
+   * یا `{ kind: 'image', url, alt }`. شکلش را `normalizeQuestionMedia` در
+   * `server/services/lessonQuiz.js` تضمین می‌کند.
+   */
+  media       Json?
+  status      String    @default("published")
+  source      String?
+  reviewedAt  DateTime?
+  version     Int       @default(1)
+  order       Int       @default(0)
+
+  lessonLinks LessonQuestion[]
+  exposures   QuestionExposure[]
+  reports     QuestionReport[]
+  versions    QuestionVersion[]
+
+  @@index([status, skill, topic])
+}
+
+/**
+ * پیوند بانک سؤال به درس — چند-به-چند.
+ * order فقط ترتیب نمایش در فهرست ادمینِ همان درس است؛ روی ترتیب واقعی آزمون
+ * کاربر اثر ندارد (آن را quizSession با seed تصادفی می‌چیند).
+ */
+model LessonQuestion {
+  lessonId   String
+  questionId String
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  lesson   Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([lessonId, questionId])
+  @@index([questionId])
+}
+
+/**
+ * یک نمایش واقعی در مرورگر؛ کلید یکتا Refresh و رفت‌وبرگشت را دوباره نمی‌شمارد.
+ */
+model QuestionExposure {
+  id         String       @id @default(cuid())
+  questionId String
+  sessionId  String
+  userId     String
+  viewedAt   DateTime     @default(now())
+  answeredAt DateTime?
+  responseMs Int?
+  isCorrect  Boolean?
+  question   QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId])
+  @@index([questionId, answeredAt])
+  @@index([userId, viewedAt])
+}
+
+model QuestionReport {
+  id         String       @id @default(cuid())
+  questionId String
+  userId     String
+  reason     String
+  detail     String?
+  createdAt  DateTime     @default(now())
+  question   QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, userId])
+  @@index([questionId, createdAt])
+}
+
+/**
+ * Snapshot پیش از هر ویرایش؛ نسخه‌ی منتشرشده هرگز بی‌ردپا overwrite نمی‌شود.
+ */
+model QuestionVersion {
+  id         String       @id @default(cuid())
+  questionId String
+  version    Int
+  snapshot   Json
+  changedBy  String
+  createdAt  DateTime     @default(now())
+  question   QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, version])
+  @@index([questionId, createdAt])
+}
+
+/**
+ * تمرین فنی — مثلاً «روی این نمودار خط روند بکش».
+ * criteria معیارهای *قطعیِ* پذیرش است (حداقل تعداد برخورد، حداکثر عبور از بدنه‌ی
+ * کندل و…). موتور نمره‌دهی از همین می‌خواند، نه از AI.
+ */
+model Exercise {
+  id        String  @id @default(cuid())
+  lessonId  String
+  kind      String
+  title     String
+  prompt    String?
+  datasetId String?
+  criteria  Json
+  order     Int     @default(0)
+  required  Boolean @default(true)
+  published Boolean @default(true)
+
+  lesson   Lesson             @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  dataset  ScenarioDataset?   @relation(fields: [datasetId], references: [id], onDelete: SetNull)
+  attempts Attempt[]
+  progress ExerciseProgress[]
+
+  @@index([lessonId, order])
+}
+
+/**
+ * کندل‌های ثابتِ یک سناریو یا تمرین.
+ * ⚠️ عمداً از MarketCandle جداست. آن جدول سراسری است و pruneCandles قدیمی‌ها را
+ * پاک می‌کند تا از سقف بیشتر نشود؛ داده‌ی سناریو باید تغییرناپذیر بماند.
+ * candles به‌صورت Json نگه داشته می‌شود نه جدول ردیفی: یک سناریوی ششصد کندلی
+ * حدود سی کیلوبایت است و همیشه یکجا خوانده می‌شود. اگر روزی هزاران سناریو شد،
+ * آن‌وقت مهاجرت — نه حالا.
+ */
+model ScenarioDataset {
+  id        String   @id @default(cuid())
+  title     String
+  /**
+   * [{ time, open, high, low, close }] — صعودی بر حسب زمان.
+   */
+  candles   Json
+  timeframe Int      @default(1)
+  startTime Int
+  endTime   Int
+  source    String?
+  createdAt DateTime @default(now())
+
+  scenarios Scenario[]
+  exercises Exercise[]
+}
+
+/**
+ * سناریوی برچسب‌خورده‌ی میدان تصمیم.
+ * 🛡️ testedBehavior و criticalPoints و acceptableDecisions هرگز نباید در حالت
+ * ارزیابی به مرورگر بروند. اگر کاربر بداند چه چیزی سنجیده می‌شود، دیگر رفتار
+ * طبیعی‌اش سنجیده نمی‌شود و کل ارزش سیستم از بین می‌رود.
+ */
+model Scenario {
+  id                  String         @id @default(cuid())
+  lessonId            String?
+  datasetId           String
+  title               String
+  description         String?
+  difficulty          String         @default("medium")
+  passThreshold       Int            @default(70)
+  maxBars             Int?
+  contextBars         Int            @default(60)
+  /**
+   * رفتار مورد آزمایش: fomo، revenge، stop-move، early-exit و…
+   */
+  testedBehavior      String
+  /**
+   * از کدام کندل شروع شود و تا کجا ادامه یابد (اندیس در آرایه‌ی dataset).
+   */
+  startIndex          Int            @default(0)
+  endIndex            Int
+  /**
+   * لحظه‌های حساس سناریو — برای بازپخش و توضیح بعد از پایان.
+   */
+  criticalPoints      Json?
+  /**
+   * تصمیم‌هایی که قابل قبول‌اند. عمداً چندتایی: یک جواب صحیح قطعی وجود ندارد.
+   */
+  acceptableDecisions Json?
+  /**
+   * تخلف‌های مهم و وزنشان در نمره‌ی کیفیت.
+   */
+  violations          Json?
+  scoringWeights      Json?
+  allowEarlyFinish    Boolean        @default(false)
+  version             Int            @default(1)
+  status              ScenarioStatus @default(DRAFT)
+  publishedAt         DateTime?
+  archivedAt          DateTime?
+  published           Boolean        @default(false)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  /**
+   * پر است فقط برای سناریوهایی که خودِ کاربر در «تمرین آزاد» ساخته (نه ادمین).
+   * عمداً بدون رابطه‌ی رسمی به User است — دقیقاً مثل AuditLog.actorId — چون این
+   * فقط برای فیلترِ «تمرین‌های خودم» لازم است، نه یکپارچگیِ ارجاعی. هیچ‌وقت در
+   * فهرست عمومیِ /scenarios دیده نمی‌شود چون published همیشه false می‌ماند.
+   */
+  createdByUserId     String?
+
+  lesson   Lesson?         @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  dataset  ScenarioDataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  attempts Attempt[]
+
+  @@index([lessonId])
+  @@index([testedBehavior])
+  @@index([createdByUserId])
+}
+
+/**
+ * یک تلاش کاربر — روی یک تمرین یا یک سناریو.
+ * ⚠️ cursor سمت سرور نگه داشته می‌شود، نه کلاینت. اگر مرورگر بگوید «الان کندل
+ * صدوبیستم هستم»، تقلب یک خط کد است.
+ * ⚠️ mode بعد از ساخته شدن تغییرناپذیر است. اجرای اول هر سناریو همیشه assess
+ * است: در آن حالت نه هشداری داده می‌شود، نه مربی دخالت می‌کند، و نه رفتار مورد
+ * آزمایش به کاربر گفته می‌شود.
+ */
+model Attempt {
+  id          String    @id @default(cuid())
+  userId      String
+  scenarioId  String?
+  exerciseId  String?
+  /**
+   * assess = ارزیابی بدون دخالت · coach = حالت اصلاح با راهنمایی
+   */
+  mode        String    @default("assess")
+  /**
+   * برنامه‌ای که کاربر *پیش از* شروع نوشته — مبنای سنجش پایبندی.
+   */
+  plan        Json?
+  /**
+   * PLANNING تا زمان قفل Pre-plan؛ سپس ACTIVE.
+   */
+  status      String    @default("PLANNING")
+  /**
+   * مبدأ واقعی سنجش زمان تصمیم‌گیری.
+   */
+  activatedAt DateTime?
+  cursor      Int       @default(0)
+  score       Int?
+  /**
+   * نتیجه‌ی نمره‌دهی قطعی، تفکیک‌شده.
+   */
+  breakdown   Json?
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scenario Scenario?       @relation(fields: [scenarioId], references: [id], onDelete: Restrict)
+  exercise Exercise?       @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  events   AttemptEvent[]
+  trades   ScenarioTrade[]
+
+  /**
+   * Immutable scenario, dataset and grading configuration captured at start.
+   */
+  scenarioSnapshot Json?
+  /**
+   * رسم‌های میدان تصمیم — [{id, kind, points:[{time,price}], atCursor, text?}].
+   * فقط در پایان تلاش، همراه با finish، یک‌جا ذخیره می‌شود؛ تا آن لحظه در
+   * sessionStorage مرورگر می‌مانند. اعتماد امنیتی‌ای رویش نیست (بازپخش کندل‌ها
+   * جای دیگری تضمین می‌شود)، فقط برای سنجش تحلیل و نمایش بعدی در حالت coach.
+   */
+  drawings         Json?
+
+  @@index([userId, startedAt])
+  @@index([scenarioId])
+}
+
+enum ScenarioStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+/**
+ * تلاش نظری مستقل؛ پاسخ‌ها پس از ثبت نگه‌داری می‌شوند تا بازخورد قابل اتکا باشد.
+ */
+model QuizAttempt {
+  id         String   @id @default(cuid())
+  userId     String
+  lessonId   String
+  answers    Json
+  score      Int
+  passed     Boolean
+  /**
+   * جمع‌بندی موضوع/مهارت‌های ضعیف در همان تلاش؛ مبنای آزمون بعدی.
+   */
+  weaknesses Json?
+  createdAt  DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lessonId, createdAt])
+}
+
+model QuizSession {
+  id           String    @id @default(cuid())
+  userId       String
+  lessonId     String
+  questionIds  Json
+  optionOrders Json
+  seed         String
+  status       String    @default("active")
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  /**
+   * تمرکز تطبیقیِ انتخاب‌شده از اشتباه‌های تلاش قبلی.
+   */
+  focus        Json?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson       Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lessonId, status])
+}
+
+/**
+ * پیشرفت هر تمرین مستقل است. LessonProgress فقط جمع‌بندی مرحله است و نباید
+ * قبولی یک تمرین را به تمرین‌های دیگر سرایت دهد.
+ */
+model ExerciseProgress {
+  id         String    @id @default(cuid())
+  userId     String
+  exerciseId String
+  bestScore  Int       @default(0)
+  lastScore  Int       @default(0)
+  attempts   Int       @default(0)
+  passedAt   DateTime?
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise   Exercise  @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exerciseId])
+  @@index([userId, updatedAt])
+}
+
+/**
+ * پیشرفت هر درس؛ سه نوع سنجش دیگر در یک عدد مبهم overwrite نمی‌شوند.
+ */
+model LessonProgress {
+  id                 String    @id @default(cuid())
+  userId             String
+  lessonId           String
+  contentCompletedAt DateTime?
+  theoryBest         Int?
+  theoryLast         Int?
+  theoryAttempts     Int       @default(0)
+  theoryPassedAt     DateTime?
+  practiceBest       Int?
+  practiceLast       Int?
+  practiceAttempts   Int       @default(0)
+  practicePassedAt   DateTime?
+  arenaBest          Int?
+  arenaLast          Int?
+  arenaAttempts      Int       @default(0)
+  arenaPassedAt      DateTime?
+  overallScore       Int?
+  lastActivityAt     DateTime?
+  completedAt        DateTime?
+  nextReviewAt       DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId, nextReviewAt])
+}
+
+/**
+ * هر تصمیم کاربر در جریان یک تلاش، با مهر زمانیِ سرور.
+ * چرا جدول جدا و نه یک Json روی Attempt: بازپخشِ لحظه‌ی تصمیم و تحلیل «چند کندل
+ * شتاب‌دار قبل از ورود دیده بود» فقط با تاریخچه‌ی رویدادِ ترتیبی ممکن است.
+ * atCursor می‌گوید کاربر در چه لحظه‌ای از سناریو این کار را کرده — و چون سمت
+ * سرور ثبت می‌شود، قابل دستکاری نیست.
+ */
+model AttemptEvent {
+  id        String   @id @default(cuid())
+  attemptId String
+  kind      String
+  atCursor  Int
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  attempt Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId, createdAt])
+}
+
+/**
+ * 🔴 معامله‌ی تمرینی — عمداً جدا از جدول Trade.
+ * این مهم‌ترین تصمیم معماری کل سیستم آموزش است.
+ * بیست‌وچهار کوئری در پنج فایل (portfolio.js، coachContext.js، user.js،
+ * index.js، admin.js) بدون هیچ فیلتری از جدول Trade می‌خوانند. اگر معامله‌ی
+ * سناریو آنجا بنشیند، کاربری که در تمرینِ FOMO عمداً بد معامله کرده، در Trading
+ * DNA واقعی‌اش برچسب FOMO می‌گیرد، موجودی واقعی‌اش عوض می‌شود، گزارش هفتگی‌اش
+ * خراب می‌شود و آمار پنل ادمین هم دروغ می‌گوید.
+ * ستونِ context به‌جای جدول جدا هم بررسی شد و رد شد: یعنی باید هر بیست‌وچهار
+ * کوئری را پیدا و فیلتر کنی، و یکی را که فراموش کنی باگی می‌سازد که ماه‌ها دیده
+ * نمی‌شود و وقتی دیده شود، دیگر ردیابی‌اش سخت است.
+ * شکل ستون‌ها عمداً همان Trade است تا توابع خالصِ portfolio.js (balancesFrom،
+ * positionsFrom، scoreTrade، detectPatterns) بدون هیچ تغییری روی این هم کار کنند.
+ */
+model ScenarioTrade {
+  id          String    @id @default(cuid())
+  attemptId   String
+  type        String
+  goldAmount  Float
+  entryPrice  Int
+  exitPrice   Int?
+  pnl         Int?
+  status      String    @default("open")
+  takeProfit  Int?
+  stopLoss    Int?
+  leverage    Int       @default(1)
+  margin      Int?
+  /**
+   * در کدام کندلِ سناریو باز و بسته شده — مبنای بازپخش لحظه‌ی تصمیم.
+   */
+  openCursor  Int
+  closeCursor Int?
+  createdAt   DateTime  @default(now())
+  closedAt    DateTime?
+
+  attempt Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+}
+
+/**
+ * پیشرفت کاربر در هر مهارت آموزشی.
+ * ⚠️ عمداً از Trading DNA جداست. نقشه‌ی مهارت می‌گوید «چه چیزی را یاد گرفته»؛
+ * Trading DNA می‌گوید «در عمل چطور رفتار می‌کند». این دو یکی نیستند و قاطی
+ * کردنشان هر دو را بی‌معنا می‌کند.
+ * nextReviewAt پایه‌ی مرور فاصله‌دار است: مهارتی که چند روز تمرین نشده دوباره
+ * پیشنهاد می‌شود.
+ */
+model SkillProgress {
+  id            String    @id @default(cuid())
+  userId        String
+  skill         String
+  score         Int       @default(0)
+  attempts      Int       @default(0)
+  lastPracticed DateTime?
+  nextReviewAt  DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skill])
+  @@index([userId])
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 📣 مرکز بازاریابی هوشمند — Telegram (server/services/marketing/*)
+// ══════════════════════════════════════════════════════════════════════════
+//
+// معماری: Goldemy مالکِ داده و منطق است. n8n فقط orchestration/ارسال به تلگرام/
+// retry/گزارش تحویل را انجام می‌دهد. ⚠️ هیچ توکنِ بات تلگرام اینجا ذخیره نمی‌شود —
+// فقط داخل Credential Store خودِ n8n. Goldemy هرگز مستقیم به Telegram API وصل
+// نمی‌شود (docs/MARKETING_AUTOMATION.md).
+
+/**
+ * یک کانال تلگرامیِ گلدمی. از ابتدا چندکاناله طراحی شده — هیچ فرضی روی تعداد
+ * یا نوع کانال نیست.
+ */
+model MarketingChannel {
+  id               String    @id @default(cuid())
+  name             String
+  slug             String    @unique
+  telegramChatId   String
+  telegramUsername String?
+  description      String?
+  contentCategory  String
+  tone             String    @default("friendly")
+  language         String    @default("fa")
+  isActive         Boolean   @default(true)
+  // MANUAL | APPROVAL | FULL_AUTO — پیش‌فرض همیشه APPROVAL (server/services/marketing/channels.js)
+  autoPublishMode  String    @default("APPROVAL")
+  postingFrequency String?
+  // ["09:00","18:30"]
+  preferredTimes   Json      @default("[]")
+  maxPostsPerDay   Int       @default(3)
+  forbiddenWords   Json      @default("[]")
+  forbiddenTopics  Json      @default("[]")
+  toneNotes        String?
+  aiPromptTemplate String?
+  maxLength        Int       @default(700)
+  // none | low | normal | high
+  emojiLevel       String    @default("normal")
+  allowHashtags    Boolean   @default(false)
+  defaultCta       String?
+  goldemyLinkPath  String?
+  // ── وضعیتِ اتصال — نمایش داده می‌شود، نه توکن ──
+  lastTestAt       DateTime?
+  lastTestOk       Boolean?
+  lastTestError    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  contents  MarketingContent[]
+  planItems MarketingPlanItem[]
+
+  @@index([isActive])
+}
+
+/**
+ * یک واحدِ محتوا برای یک کانال — از تولید تا انتشار، یک ردیف با تاریخچه‌ی status.
+ * ⚠️ id همین ردیف، خودِ کلیدِ idempotency است که به n8n و از آن به callback
+ * فرستاده می‌شود؛ نیازی به فیلد جدا نیست.
+ */
+model MarketingContent {
+  id                String    @id @default(cuid())
+  channelId         String
+  // EDUCATIONAL|PRODUCT_FEATURE|HUGO_TIP|QUIZ|POLL|ANNOUNCEMENT|RELEASE_NOTE|
+  // RISK_MANAGEMENT|PSYCHOLOGY|MARKET_NEWS|GOLDEMY_STATS|ENGAGEMENT
+  type              String
+  topic             String?
+  title             String?
+  /**
+   * یک جمله‌ی کوتاه و پرکشش — *همه‌ی* چیزی که در کپشنِ تلگرام دیده می‌شود.
+   * متنِ اصلی (body) روی خودِ تصویر می‌رود. کپشنِ بلند در تلگرام خوانده
+   * نمی‌شود و با تصویری که همان حرف را می‌زند، دوباره‌کاری است.
+   */
+  hook              String?
+  body              String    @db.Text
+  cta               String?
+  mediaUrl          String?
+  // DRAFT|REVIEW|APPROVED|SCHEDULED|PUBLISHING|PUBLISHED|FAILED|CANCELLED
+  status            String    @default("DRAFT")
+  scheduledAt       DateTime?
+  publishedAt       DateTime?
+  telegramMessageId String?
+  aiGenerated       Boolean   @default(false)
+  aiPromptVersion   String?
+  qualityScore      Int?
+  qualityIssues     Json?
+  utmCampaign       String?
+  createdBy         String?
+  approvedBy        String?
+  failureCode       String?
+  failureMessage    String?
+  retryCount        Int       @default(0)
+  /**
+   * کدام اسلاتِ برنامه این را ساخت.
+   *
+   * ⚠️ برای idempotency لازم است. پیش‌تر شرطِ «امروز قبلاً ساخته شده؟» فقط
+   * کانال را می‌دید، پس با چند اسلات در روز، اسلاتِ دوم به بعد بی‌صدا رد
+   * می‌شدند. حالا شرط به‌ازای *اسلات* بررسی می‌شود.
+   */
+  planItemId        String?
+  /**
+   * شناسه‌ی دسته‌ی تولید — همه‌ی نسخه‌هایی که در یک فراخوانِ مدل ساخته شدند.
+   *
+   * 🐛 مدل چند نسخه تولید می‌کرد و برنامه‌ریز فقط `variants[0]` را نگه
+   * می‌داشت و بقیه را دور می‌ریخت. نتیجه این بود که رد کردنِ یک پیش‌نویس
+   * بن‌بست می‌شد: هیچ گزینه‌ی بعدی‌ای وجود نداشت که نشان داده شود.
+   */
+  batchId           String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  channel  MarketingChannel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  planItem MarketingPlanItem? @relation(fields: [planItemId], references: [id], onDelete: SetNull)
+
+  @@index([channelId, status])
+  @@index([status, scheduledAt])
+  @@index([batchId, status])
+  @@index([planItemId, createdAt])
+}
+
+/**
+ * برنامه‌ریزیِ هفتگیِ محتوا — چند اسلات به‌ازای هر روزِ هفته برای هر کانال،
+ * هرکدام با نوعِ محتوا و ساعتِ خودش. planner.js روزانه از روی همین جدول
+ * Draft می‌سازد (server/services/marketing/planner.js).
+ */
+model MarketingPlanItem {
+  id          String   @id @default(cuid())
+  channelId   String
+  // 0..6 — همان مقدارِ JS Date#getDay() محاسبه‌شده در Asia/Tehran
+  dayOfWeek   Int
+  contentType String
+  topic       String?
+  /**
+   * ساعتِ انتشارِ همین اسلات — "HH:MM" در Asia/Tehran.
+   *
+   * ⚠️ پیش‌تر ساعت روی *کانال* بود (`preferredTimes`) و برنامه‌ریز فقط
+   * اولینش را برمی‌داشت. یعنی هرچند ساعت که می‌نوشتی، همه‌ی پست‌ها سرِ ساعتِ
+   * اول منتشر می‌شدند. حالا ساعت مالِ خودِ اسلات است.
+   */
+  timeOfDay   String   @default("09:00")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  channel MarketingChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  drafts  MarketingContent[]
+
+  /**
+   * ⚠️ کلیدِ یکتا قبلاً `[channelId, dayOfWeek]` بود — یعنی هر روز دقیقاً یک
+   * پست، و «شش پست در روز» از نظرِ ساختارِ داده *غیرممکن*. حالا ساعت هم جزو
+   * کلید است: هر روز می‌تواند چند اسلات داشته باشد، ولی دو اسلات نمی‌توانند
+   * سرِ یک ساعت باشند.
+   */
+  @@unique([channelId, dayOfWeek, timeOfDay])
+  @@index([dayOfWeek, isActive])
+}
+
+/**
+ * کلیدِ خاموش/روشنِ سراسریِ اتوماسیونِ مارکتینگ — تک‌ردیفی (id ثابت "global").
+ * پیش‌فرض false: نبودِ ردیف هم یعنی خاموش — امن‌ترین حالتِ شروع.
+ * ⚠️ فقط زمان‌بندی و Full-Auto را کنترل می‌کند؛ انتشار دستی (اقدام صریح ادمین
+ * با تأییدِ دومرحله‌ای در UI) از این کلید عبور نمی‌کند.
+ */
+model MarketingSetting {
+  id                String  @id @default("global")
+  automationEnabled Boolean @default(false)
+
+  /**
+   * امضای ثابتِ پایینِ هر پست — لینکِ سایت، کانال، یا هرچه ادمین بخواهد.
+   * خاموش بودنش پیش‌فرض است: امضای خالی بهتر از امضای اشتباه است.
+   */
+  footerEnabled Boolean @default(false)
+  footerText    String?
+
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+}
+
+/**
+ * تاریخچه‌ی قیمتِ *واقعی* — برای نمودارِ کارت‌های مارکتینگ.
+ * ⚠️ عمداً از MarketCandle جداست و هیچ‌وقت نباید با آن قاطی شود. MarketCandle
+ * خروجیِ شبیه‌سازِ ترمینال است (server/services/marketEngine.js با ثابت‌های
+ * نوسانِ خودش کندل می‌سازد و فقط لنگرش قیمتِ واقعی است). گذاشتنِ آن روی یک
+ * پستِ عمومی یعنی انتشارِ نموداری که شبیه‌سازی است ولی مثل بازارِ واقعی به نظر
+ * می‌رسد — خطی که در یک محصولِ مالی نباید رد شود.
+ * فقط وقتی ردیف نوشته می‌شود که منبعِ قیمت واقعاً upstream باشد، نه seed.
+ */
+model PriceHistoryPoint {
+  /**
+   * ثانیه‌ی یونیکس، گرد‌شده به بازه‌ی نمونه‌برداری.
+   */
+  time  Int  @id
+  /**
+   * گرمِ آبشده، تومان — عددی که کاربرِ ایرانی «قیمت طلا» می‌داندش.
+   */
+  gram  Int
+  /**
+   * مظنه‌ی مثقالِ ۱۷ عیار، تومان.
+   */
+  mazne Int
+  /**
+   * دلار، تومان.
+   */
+  usd   Int?
+
+  @@index([time])
+}
+
+/**
+ * موضوعِ آماده برای تولیدِ محتوا — ادمین از بات یا پنل اضافه‌شان می‌کند.
+ * ⚠️ چرا جدول و نه فهرستِ ثابت در کد: موضوع چیزی است که با فازِ کسب‌وکار عوض
+ * می‌شود («معرفی میدان تصمیم» فقط تا وقتی تازه است معنی دارد). فهرستِ ثابت
+ * یعنی هر تغییرِ محتوایی یک دیپلوی لازم دارد.
+ */
+model MarketingTopic {
+  id         String    @id @default(cuid())
+  /**
+   * نوعِ محتوایی که این موضوع برایش معنی می‌دهد؛ null یعنی همه.
+   */
+  type       String?
+  title      String
+  /**
+   * بار آخر چه زمانی از این موضوع استفاده شد — برای نچرخیدن روی یک موضوع.
+   */
+  lastUsedAt DateTime?
+  useCount   Int       @default(0)
+  isActive   Boolean   @default(true)
+  createdBy  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([isActive, type])
+}

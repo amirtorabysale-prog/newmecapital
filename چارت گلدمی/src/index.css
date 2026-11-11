@@ -1,0 +1,660 @@
+/* ⚠️ ‏@import قلم‌ها از این‌جا برداشته شد و به index.html رفت.
+   ‏@import داخلِ CSS بدترین راهِ ممکن برای قلم است: مرورگر تا خودِ این فایل را
+   دانلود و parse نکند اصلاً نمی‌داند قلمی هم لازم است — یعنی دو رفت‌وبرگشتِ
+   پشتِ‌سرِهم پیش از اولین متن. با <link> در <head> (به‌علاوه‌ی preconnect)،
+   دانلود از همان اسکنِ اولِ HTML شروع می‌شود. */
+@import "tailwindcss" source(none);
+
+/* ⚠️ دامنه‌ی اسکن را صریح می‌بندیم.
+   تیلویند ۴ به‌صورت پیش‌فرض کل پروژه را می‌گردد و هر رشته‌ای که شبیه کلاس
+   باشد را کلاس می‌سازد — از جمله نام کلاس‌هایی که در جدول‌های CLAUDE.md
+   فقط *توضیح داده* شده‌اند. نتیجه: مستندات، باندل CSS را باد می‌کرد. */
+@source "./**/*.{ts,tsx}";
+@source "../index.html";
+
+/* ==========================================================================
+   توکن‌های گلدمی
+
+   ⚠️ این تنها جای تعریف رنگ، اندازه‌ی قلم و ارتفاع خط است. قواعد استفاده در
+   CLAUDE.md نوشته شده — این فایل فقط مقدارها را می‌دهد.
+
+   چرا اینجا و نه tailwind.config: پروژه تیلویند ۴ است و در آن نسخه، بلوک
+   @theme خودش نقش کانفیگ را دارد. هر متغیری که اینجا تعریف شود، به‌صورت
+   خودکار به کلاس تبدیل می‌شود (--color-brand ← bg-brand، text-brand، ...).
+
+   ⚠️ رنگ چارت اینجا نیست. lightweight-charts رنگ را به‌صورت مقدار
+   جاوااسکریپت می‌گیرد و هیچ‌وقت کلاس CSS نمی‌بیند — آن مقادیر در
+   src/lib/theme.ts هستند. این دوگانگی عمدی است، نه فراموشی.
+   ========================================================================= */
+
+@theme {
+  --font-sans: "Vazirmatn Variable", "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
+  /* ⚠️ Vazirmatn بلافاصله بعد از JetBrains Mono — نه اختیاری.
+     JetBrains Mono هیچ حرفِ فارسی ندارد، پس هر کلمه‌ی فارسی داخلِ font-mono
+     (واحدِ «تومان» کنارِ عدد، «مرحله ۳»، برچسبِ دفتر سفارش) به `monospace` ِ
+     عمومی می‌افتاد — روی ویندوز یعنی Courier New، که حروفِ عربی را با عرضِ ثابت
+     و *بدونِ اتصال* می‌کشد. نتیجه «تـومـان» و «مـرحـلـه» بود، در همه‌ی صفحه‌ها.
+     ارقام هنوز از JetBrains Mono می‌آیند، چون آن فونت ارقام را دارد. */
+  --font-mono: "JetBrains Mono", "Vazirmatn Variable", "Vazirmatn", ui-monospace, SFMono-Regular, monospace;
+
+  /* ── سطوح ──
+     ریشه‌شان پالت تریدینگ‌ویو است، چون چارت با همین رنگ‌ها می‌آید و هر
+     انتخاب دیگری برای بدنه‌ی سایت، چارت را مثل یک وصله نشان می‌داد.
+
+     ⚠️ اسم توکن با فضای‌نام کلاس‌های خودِ تیلویند تداخل نکند. نسخه‌ی اول
+     این بلوک --color-base داشت و همان، کلاس داخلی text-base را از
+     «اندازه‌ی قلم ۱۶» به «رنگ متن = زمینه‌ی صفحه» تبدیل کرد — یعنی هشت جا
+     متنِ تیره روی زمینه‌ی تیره. بیلد و tsc هر دو سبز بودند.
+     پیش از افزودن توکن تازه، dist/assets/*.css را بگرد. */
+  --color-surface:        #131722;  /* زمینه‌ی صفحه */
+  --color-surface-raised: #1e222d;  /* کارت، پنل */
+  --color-surface-sunken: #0d0f14;  /* گودتر از صفحه: مودال، ورودی */
+  /* زمینه‌ی بوم چارت. کمی از کارت تیره‌تر تا چارت از پنل جدا شود.
+     ⚠️ باید با CHART_SURFACE.background در src/lib/theme.ts یکی بماند —
+     این همان رنگ است، یک‌بار برای قابِ DOM و یک‌بار برای خودِ بوم. */
+  --color-surface-chart:  #171d2b;
+  --color-line:       #2a2e39;  /* مرز پیش‌فرض */
+  --color-line-loud:  #363a45;  /* مرز در هاور یا حالت فعال */
+
+  /* ── متن ──
+     هر سه روی base و raised کنتراست ۴.۵:۱ را رد می‌کنند.
+     ⚠️ text-gray-500 که الان در کد هست، رد نمی‌کند (۳.۷ روی base) —
+     به‌جایش muted استفاده شود. */
+  --color-ink:        #ffffff;  /* عنوان، عدد قهرمان */
+  --color-ink-2:      #d1d4dc;  /* متن اصلی */
+  --color-muted:      #8e929e;  /* برچسب، واحد، متن ثانویه */
+
+  /* ── برند ──
+     طلای خاموش. جایگزین #ffd700 که خیلی زرد و خیلی روشن بود.
+     ⚠️ brand-deep فقط برای مرز و پرکردن است — به‌عنوان متن کنتراست
+     ندارد (۳.۶ روی base). */
+  --color-brand:      #d4a62a;
+  --color-brand-soft: #e0b63f;  /* هاور */
+  --color-brand-deep: #8a6d1c;  /* مرز و پرکردن — نه متن */
+
+  /* ── جهت بازار ──
+     ⚠️ مقدس. فقط کندل، سود و زیان، و دکمه‌ی خرید و فروش.
+     down برای پرکردن است؛ روی کارت به‌عنوان متن کنتراست کم دارد (۴.۲)
+     و آنجا باید down-text استفاده شود. */
+  --color-up:         #22c55e;
+  --color-down:       #ef4444;
+  --color-down-text:  #f87171;
+
+  /* ── نقش‌های معنایی ──
+     ai   — فقط جایی که هوگو حرف می‌زند
+     alert— محدودیت ریسک، تعهد نقض‌شده
+     info — اطلاع خنثی و وضعیت ثانویه (زمان‌بندی‌شده، راهنما، تمرین آزاد).
+            سیگنالی که نه سود است نه خطر و نباید با برند اشتباه شود. */
+  /* ── رنگ‌های دسته‌بندی ──
+     ⚠️ فقط برای *تفکیک سری‌های داده* از هم — سبک معاملاتی، محورهای امتیاز.
+     هرگز برای حالت: «سری ۲» هیچ معنایی از خوب و بد ندارد. اگر رنگی قرار
+     است چیزی بگوید، از توکن‌های معنایی پایین استفاده کن نه از این‌ها.
+     عمداً از هیچ‌کدام از هیوهای معنایی (طلایی، سبز، قرمز، نارنجی) نیستند
+     تا با آن‌ها اشتباه نشوند. */
+  --color-series-1:   #f472b6;
+  --color-series-2:   #60a5fa;
+  --color-series-3:   #2dd4bf;
+
+  --color-ai:         #a855f7;
+  --color-ai-text:    #c084fc;  /* روی کارت، متنِ ai کنتراست کم دارد */
+  --color-alert:      #f97316;
+  --color-info:       #38bdf8;
+
+  /* ── مقیاس تایپ ──
+     شش سطح، سه وزن. ارتفاع خطِ ۱.۸ برای متن فارسی الزامی است — کشیدگی
+     حروف و نقطه‌های زیر و بالا با ارتفاع کمتر به هم می‌چسبند. */
+  --text-display:               2rem;      /* ۳۲ — یک بار در هر صفحه */
+  --text-display--line-height:  1.3;
+  --text-display--font-weight:  700;
+
+  --text-title:                 1.25rem;   /* ۲۰ */
+  --text-title--line-height:    1.4;
+  --text-title--font-weight:    600;
+
+  --text-heading:               1rem;      /* ۱۶ */
+  --text-heading--line-height:  1.5;
+  --text-heading--font-weight:  600;
+
+  --text-body:                  0.875rem;  /* ۱۴ */
+  --text-body--line-height:     1.8;
+  --text-body--font-weight:     400;
+
+  --text-caption:               0.75rem;   /* ۱۲ */
+  --text-caption--line-height:  1.6;
+  --text-caption--font-weight:  400;
+
+  --text-data:                  0.875rem;  /* ۱۴ — با کلاس tnum */
+  --text-data--line-height:     1;
+  --text-data--font-weight:     500;
+}
+
+/* ⚠️ این یک ترجیح نیست، یک محافظ است.
+   کروم اندروید (و «تیره‌سازی اجباری» که روی خیلی از گوشی‌ها روشن است) هر
+   صفحه‌ای را که *اعلام نکرده باشد* تیره است، خودش بازنویسی می‌کند: رنگ‌ها را
+   وارونه یا کم‌اشباع می‌کند. نتیجه‌اش دقیقاً همان چیزی بود که روی موبایل دیده
+   می‌شد — همان سایت، با رنگ‌هایی که هیچ‌جای سیستم طراحی نیستند.
+   با color-scheme: dark مرورگر می‌فهمد تیره‌سازی از قبل انجام شده و دست
+   نمی‌زند. کنترل‌های بومی (اسکرول‌بار، ورودی، تقویم) هم تیره می‌شوند. */
+:root {
+  color-scheme: dark;
+}
+
+/* ⚠️ زمینه روی html هم لازم است، نه فقط body. در iOS وقتی صفحه را تا انتها
+   می‌کشی و رها می‌کنی (کشسانیِ اسکرول)، آن‌چه پشتِ body دیده می‌شود زمینه‌ی
+   html است — و بدونِ این خط، سفید بود. */
+html {
+  background-color: var(--color-surface);
+  /* ضربه روی موبایل یک برقِ آبی/خاکستریِ سیستمی می‌ساخت که هیچ‌جای پالت نیست.
+     بازخوردِ لمس را خودمان با :active و حلقه‌ی فوکوس می‌دهیم. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: var(--color-ink-2);
+  font-family: var(--font-sans);
+  direction: rtl;
+  overflow-x: hidden;
+}
+
+/* ==========================================================================
+   کف دسترس‌پذیری
+
+   ⚠️ این‌ها عمداً سراسری‌اند، نه کلاسی که هر کامپوننت باید یادش بماند. کفِ
+   کیفیت چیزی است که با *فراموش کردن* هم نباید بشکند — و تا امروز می‌شکست:
+   حلقه‌ی فوکوس هیچ‌جا تعریف نشده بود و شش جا با focus:outline-none حلقه‌ی
+   پیش‌فرضِ مرورگر هم برداشته شده بود، بی‌آنکه چیزی جایش بنشیند. کسی که با
+   کیبورد کار می‌کند هیچ نمی‌دید کجاست.
+   ========================================================================= */
+
+/* :focus-visible و نه :focus — کلیکِ ماوس نباید حلقه بگذارد، فقط کیبورد. */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* روی زمینه‌ی روشنِ برند، حلقه‌ی طلایی دیده نمی‌شود. */
+.bg-brand:focus-visible,
+.bg-brand-soft:focus-visible {
+  outline-color: var(--color-ink);
+}
+
+/* هدف لمسی ۴۴×۴۴. با :where وزنِ صفر می‌گیرد، پس هر کلاسِ اندازه‌ای که
+   کامپوننت خودش می‌گذارد بی‌جنگ رویش می‌نشیند — این فقط کف است. */
+@media (pointer: coarse) {
+  :where(button, [role="button"], a[href], summary, select, input[type="checkbox"], input[type="radio"]) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* استثنا: کنترلی که *داخلِ* یک خطِ متن زندگی می‌کند نباید خط را باد کند. */
+  :where(button, a[href]).inline-target {
+    min-height: 0;
+    min-width: 0;
+  }
+}
+
+/* هر عددی که تغییر می‌کند باید عرض ثابت داشته باشد، وگرنه با هر تیکِ قیمت
+   چیدمان دور و برش تکان می‌خورد. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* نوار اسکرول باریک، هم‌رنگ سطوح */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface-raised);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-line-loud);
+}
+
+/* ==========================================================================
+   حالت‌های انتظار (src/ui/Loading.tsx)
+
+   همه با prefers-reduced-motion خاموش می‌شوند: انیمیشنِ تکرارشونده برای بخشی
+   از کاربران آزاردهنده یا حال‌به‌هم‌زن است، و اسکلت بدون درخشش هم کارش را
+   می‌کند — چیدمان را نشان می‌دهد.
+   ========================================================================= */
+
+@keyframes shimmer-sweep {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.shimmer {
+  background-image: linear-gradient(90deg, #232733 25%, #2f3543 50%, #232733 75%);
+  background-size: 200% 100%;
+  animation: shimmer-sweep 1.6s linear infinite;
+}
+
+/* کندل‌های اسکلت چارت: از پایین بالا می‌آیند و آرام نفس می‌کشند */
+@keyframes candle-rise {
+  0%   { transform: scaleY(0.25); opacity: 0.25; }
+  50%  { transform: scaleY(1);    opacity: 1; }
+  100% { transform: scaleY(0.25); opacity: 0.25; }
+}
+
+.candle-rise {
+  transform-origin: bottom;
+  animation: candle-rise 1.8s ease-in-out infinite;
+}
+
+/* حلقه‌های بازشونده دور آواتار مربی، وقتی دارد فکر می‌کند */
+@keyframes pulse-ring {
+  0%   { transform: scale(0.85); opacity: 0.8; }
+  100% { transform: scale(1.6);  opacity: 0; }
+}
+
+.pulse-ring {
+  animation: pulse-ring 1.8s cubic-bezier(0.24, 0.6, 0.4, 1) infinite;
+}
+
+/* جای‌گزینی نرم جمله‌ها، تا عوض شدن متن پرش نداشته باشد */
+@keyframes fade-swap {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-swap {
+  animation: fade-swap 0.45s ease-out;
+}
+
+/* نوارِ شمارشِ معکوسِ پیام — از راست (ابتدای خط در RTL) خالی می‌شود. مدتش را
+   خودِ پیام در style می‌دهد، چون خطا بیشتر از موفقیت می‌ماند. */
+@keyframes toast-timer {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
+.toast-timer {
+  width: 100%;
+  animation-name: toast-timer;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+
+/* ── نوارِ قیمتِ زنده (src/marketing/PriceTape.tsx) ──
+   ⚠️ جهتِ حرکت به‌سمتِ راست است نه چپ: در RTL خواندن از راست شروع می‌شود، پس
+   آیتمِ تازه باید از چپ وارد شود و به‌سوی نقطه‌ی شروعِ خواندن برود. */
+.price-tape { position: relative; overflow: hidden; border-bottom: 1px solid var(--color-line); background: color-mix(in srgb, var(--color-surface-sunken) 88%, transparent); font-size: 12px; direction: ltr;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent); }
+.price-tape-track { display: flex; width: max-content; animation: price-tape 38s linear infinite; }
+.price-tape:hover .price-tape-track { animation-play-state: paused; }
+.price-tape-group { display: flex; align-items: center; gap: 36px; padding: 9px 18px; direction: rtl; }
+.price-tape-item { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.price-tape-item + .price-tape-item::before { content: ""; width: 1px; height: 12px; background: var(--color-line); align-self: center; margin-inline-end: 30px; }
+.price-tape-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--color-muted); align-self: center; }
+.price-tape-dot.is-live { background: var(--color-up); box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-up) 60%, transparent); animation: live-dot 1.8s ease-out infinite; }
+@keyframes price-tape { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+@keyframes live-dot { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-up) 55%, transparent); } 100% { box-shadow: 0 0 0 7px transparent; } }
+
+/* ── پس‌زمینه‌ی بخشِ اولِ صفحه‌ی فرود (src/marketing/HeroBackdrop.tsx) ──
+   تک‌رنگ و بسیار کم‌رنگ؛ ماسکِ شعاعی لبه‌ها را محو می‌کند تا به متن نرسد. */
+.hero-backdrop { color: var(--color-ink); -webkit-mask-image: radial-gradient(ellipse 55% 70% at 28% 55%, #000 15%, transparent 72%); mask-image: radial-gradient(ellipse 55% 70% at 28% 55%, #000 15%, transparent 72%); }
+/* ⚠️ مرکزِ ماسک سمتِ چپ است (پشتِ هوگو)، نه وسط: سمتِ راست متنِ اصلی است و کندل پشتِ پاراگراف خوانایی را می‌کشت. */
+.hero-backdrop-grid { opacity: .035; }
+.hero-backdrop-candles { opacity: .05; top: 8%; bottom: 8%; animation: hero-candles 90s linear infinite; }
+@keyframes hero-candles { from { transform: translateX(0); } to { transform: translateX(50%); } }
+
+/* ── آشکار شدن هنگامِ اسکرول (src/ui/Reveal.tsx) ── */
+.reveal-hidden { opacity: 0; transform: translateY(18px); }
+.reveal-shown { opacity: 1; transform: none; transition: opacity 700ms cubic-bezier(.2,.7,.2,1), transform 700ms cubic-bezier(.2,.7,.2,1); }
+
+/* ── درخششِ دکمه‌ی اصلی ──
+   یک نوارِ نورِ اریب که با هاور از روی دکمه رد می‌شود — همان «برقِ» دکمه‌های
+   صرافی‌ها. فقط روی دکمه‌ی اصلیِ پرشده، نه همه‌جا؛ وگرنه صفحه چشمک‌زن می‌شود. */
+.btn-shine { position: relative; overflow: hidden; isolation: isolate; }
+.btn-shine::after { content: ""; position: absolute; inset: -40% auto -40% -60%; width: 45%; transform: skewX(-20deg); background: linear-gradient(90deg, transparent, rgb(255 255 255 / .45), transparent); z-index: -1; transition: none; left: -60%; }
+.btn-shine:hover::after { left: 130%; transition: left 750ms cubic-bezier(.2,.7,.2,1); }
+
+/* ── چشمکِ رقم‌های عوض‌شده (src/ui/FlashNumber.tsx) ──
+   فقط حالتِ شروع؛ برگشت به رنگ و زمینه‌ی عادی خودکار است. سبز/قرمز چون جهتِ
+   واقعیِ قیمت است — همان توکن‌های up و down-text. */
+@keyframes flash-up   { from { color: var(--color-up); background-color: color-mix(in srgb, var(--color-up) 24%, transparent); } }
+@keyframes flash-down { from { color: var(--color-down-text); background-color: color-mix(in srgb, var(--color-down) 24%, transparent); } }
+.flash-up, .flash-down { border-radius: 3px; animation-duration: 900ms; animation-timing-function: cubic-bezier(.2,.7,.3,1); }
+.flash-up   { animation-name: flash-up; }
+.flash-down { animation-name: flash-down; }
+
+/* ── هوگوی زنده (src/hugo/HugoLive.tsx) ──
+   ⚠️ همه‌ی مرکزهای تبدیل در خودِ کامپوننت با transform-box: view-box داده
+   می‌شوند، نه این‌جا — چون هر قطعه مرکزِ خودش را دارد (شانه، پا، پرِ کلاه).
+   این‌جا فقط «چه حرکتی» تعریف می‌شود. حلقه‌ها عمداً CSS اند نه React: رندرِ
+   هر فریم برای نفس کشیدنِ یک جغد، کنارِ چارتِ زنده گران است. */
+@keyframes hugo-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.008, 1.02); } }
+@keyframes hugo-sway    { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-1.3deg); } 75% { transform: rotate(1.3deg); } }
+@keyframes hugo-tilt    { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-2.6deg); } 75% { transform: rotate(2.6deg); } }
+@keyframes hugo-hop     { 0%, 60%, 100% { transform: translateY(0); } 20% { transform: translateY(-7px); } 38% { transform: translateY(0); } 48% { transform: translateY(-2px); } }
+@keyframes hugo-shake   { 0%, 70%, 100% { transform: translateX(0); } 76% { transform: translateX(-2.5px); } 82% { transform: translateX(2.5px); } 88% { transform: translateX(-2px); } 94% { transform: translateX(2px); } }
+@keyframes hugo-feather { 0%, 100% { transform: rotate(0deg); } 35% { transform: rotate(5deg); } 70% { transform: rotate(-2deg); } }
+@keyframes hugo-sweat   { 0% { transform: translateY(0); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(12px); opacity: 0; } }
+@keyframes hugo-bob     { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-6px) rotate(8deg); } }
+@keyframes hugo-steam   { 0%, 100% { opacity: 0.2; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-6px); } }
+@keyframes hugo-ear-l   { 0%, 100% { transform: rotate(0deg); } 35% { transform: rotate(-10deg); } 70% { transform: rotate(4deg); } }
+@keyframes hugo-ear-r   { 0%, 100% { transform: rotate(0deg); } 35% { transform: rotate(10deg); } 70% { transform: rotate(-4deg); } }
+@keyframes hugo-think-dot { 0%, 100% { opacity: 0.25; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.1); } }
+
+.hugo-breathe { animation: hugo-breathe 4.4s ease-in-out infinite; }
+.hugo-sway    { animation: hugo-sway 7s ease-in-out infinite; }
+.hugo-tilt    { animation: hugo-tilt 3.2s ease-in-out infinite; }
+.hugo-hop     { animation: hugo-hop 1.85s ease-out infinite; }
+.hugo-shake   { animation: hugo-shake 2.1s linear infinite; }
+.hugo-feather { animation: hugo-feather 3.6s ease-in-out infinite; }
+.hugo-sweat   { animation: hugo-sweat 2.2s ease-in infinite; }
+.hugo-bob     { animation: hugo-bob 1.8s ease-in-out infinite; }
+.hugo-steam   { animation: hugo-steam 0.9s ease-in-out infinite; }
+.hugo-ear-l   { animation: hugo-ear-l 0.45s ease-in-out; }
+.hugo-ear-r   { animation: hugo-ear-r 0.45s ease-in-out 0.08s; }
+.hugo-think-dot { animation: hugo-think-dot 1.5s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer,
+  .candle-rise,
+  .pulse-ring,
+  .fade-swap,
+  .toast-timer,
+  .flash-up, .flash-down,
+  .price-tape-track, .price-tape-dot.is-live, .hero-backdrop-candles,
+  .hugo-breathe, .hugo-sway, .hugo-tilt, .hugo-hop, .hugo-shake, .hugo-feather,
+  .hugo-sweat, .hugo-bob, .hugo-steam, .hugo-ear-l, .hugo-ear-r, .hugo-think-dot {
+    animation: none;
+  }
+  .btn-shine::after { display: none; }
+  .shimmer { background-image: none; background-color: #232733; }
+  .candle-rise { transform: none; opacity: 0.6; }
+  .pulse-ring { opacity: 0; }
+}
+
+.arena-input { width: 100%; border: 1px solid var(--color-line); border-radius: .5rem; background: var(--color-surface); padding: .5rem; color: white; font-size: .75rem; }
+
+/* پنل سفارش روی موبایل به پایین صفحه می‌چسبد تا در دسترس بماند. */
+@media (max-width: 640px) {
+  .order-panel { position: sticky; bottom: .5rem; z-index: 20; max-height: 58vh; overflow-y: auto; box-shadow: 0 -12px 30px rgb(0 0 0 / .45); }
+}
+
+/* Shared workspace layout: spacing separates content; borders mark real groups. */
+.workspace-page { width: 100%; max-width: 1200px; margin-inline: auto; padding-block: 8px 32px; }
+.workspace-heading, .workspace-section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.workspace-heading { padding-bottom: 24px; border-bottom: 1px solid var(--color-line); }
+.workspace-section-heading { margin-bottom: 24px; }
+.workspace-eyebrow { color: var(--color-brand); font-size: 12px; font-weight: 600; line-height: 1.8; margin-bottom: 8px; }
+.workspace-link { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 8px; color: var(--color-brand); font-size: 14px; font-weight: 600; cursor: pointer; transition: color .18s; }
+.workspace-link:hover { color: var(--color-ink); }
+.workspace-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border-block: 1px solid var(--color-line); }
+.workspace-metric { min-width: 0; padding: 24px; }
+.workspace-metric + .workspace-metric { border-inline-start: 1px solid var(--color-line); }
+.dashboard-page { display: flex; flex-direction: column; gap: 32px; }
+.dashboard-next { display: flex; align-items: center; gap: 32px; padding: 28px 32px; background: var(--color-surface); border-inline-start: 3px solid var(--color-brand); border-radius: 0 8px 8px 0; }
+.dashboard-analysis { display: grid; grid-template-columns: minmax(0,1.8fr) minmax(0,1fr); gap: 32px; }
+.dashboard-insight .workspace-link { color: var(--color-ai-text); }
+.dashboard-insight { display: flex; flex-direction: column; align-items: flex-start; padding-inline-start: 32px; border-inline-start: 1px solid var(--color-line); }
+.dashboard-question { padding: 24px; border: 1px solid var(--color-line); border-radius: 12px; }
+.dashboard-progress { padding-top: 8px; }
+.dashboard-missions { border-top: 1px solid var(--color-line); }
+.dashboard-mission { display: flex; align-items: center; gap: 16px; padding-block: 20px; border-bottom: 1px solid var(--color-line); }
+.dashboard-mission-progress { width: 128px; flex-shrink: 0; text-align: end; }
+.app-workspace-header { background: var(--color-surface-sunken); }
+.app-workspace-sidebar { background: var(--color-surface-sunken); }
+.app-workspace-nav { border-radius: 6px; font-size: 14px; min-height: 48px; }
+/* زمینه و نوارِ طلاییِ ردیفِ فعال روی نشانگرِ لغزنده است (AppShell، layoutId)، نه روی خودِ دکمه. */
+.app-workspace-nav-indicator { background: var(--color-surface); box-shadow: inset -3px 0 var(--color-brand); }
+.app-workspace-content { background: var(--color-surface-sunken); }
+@media (min-width: 1280px) { .app-workspace-content { padding: 32px 40px; } }
+@media (max-width: 1023px) {
+  .workspace-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .workspace-metric:nth-child(3) { border-inline-start: 0; }
+  .workspace-metric:nth-child(n+3) { border-top: 1px solid var(--color-line); }
+  .dashboard-analysis { grid-template-columns: minmax(0,1fr); }
+  .dashboard-insight { padding-inline-start: 0; padding-top: 24px; border-inline-start: 0; border-top: 1px solid var(--color-line); }
+  .dashboard-next { flex-direction: column; align-items: flex-start; gap: 24px; }
+}
+@media (max-width: 639px) {
+  .workspace-metric { padding: 20px 12px; }
+  .dashboard-next { padding: 24px 20px; }
+  .dashboard-next > button { width: 100%; }
+  .dashboard-mission { flex-wrap: wrap; }
+  .dashboard-mission-progress { margin-inline-start: 48px; width: calc(100% - 48px); }
+}
+
+/* Public introduction alternates a compact strip, open rows, and a connected path. */
+.landing-benefits { border-block: 1px solid var(--color-line); }
+.landing-benefit + .landing-benefit { border-inline-start: 1px solid var(--color-line); }
+.landing-feature { display: grid; grid-template-columns: 96px minmax(0,1fr); column-gap: 32px; padding-block: 32px; border-top: 1px solid var(--color-line); }
+.landing-feature:last-child { border-bottom: 1px solid var(--color-line); }
+.landing-feature > div { grid-row: span 2; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 16px; }
+.landing-feature h3 { margin-top: 0; font-size: 20px; }
+.landing-feature p { font-size: 14px; max-width: 640px; }
+.landing-step { position: relative; }
+.landing-step:not(:last-child)::before { content: ""; position: absolute; inset-inline-start: 20px; top: 64px; bottom: -16px; width: 1px; background: var(--color-line); }
+.landing-step h3 { font-size: 16px; }
+.landing-step p { font-size: 14px; }
+@media (max-width: 639px) {
+  .landing-benefit + .landing-benefit { border-inline-start: 0; border-top: 1px solid var(--color-line); }
+  .landing-feature { grid-template-columns: 48px minmax(0,1fr); gap: 16px; }
+}
+
+
+
+/* Academy and DNA: continuous reading surfaces, with cards reserved for actions. */
+.learning-heading { padding-block: 8px 28px; max-width: 760px; }
+.learning-heading h2 { line-height: 1.5; }
+.learning-progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 36px; padding: 28px; background: var(--color-surface-raised); border-inline-start: 3px solid var(--color-brand); }
+.learning-course { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(0, 2fr); gap: 48px; padding-block: 40px; border-bottom: 1px solid var(--color-line); }
+/* سرتیترِ فصل با اسکرول می‌ماند — بی‌این، بعد از چند درس ستونِ راست خالی می‌شد و معلوم نبود درس‌ها مالِ کدام فصل‌اند. */
+.learning-course-heading { position: sticky; top: 16px; align-self: start; }
+.learning-course-heading h3 { font-size: 20px; line-height: 1.7; }
+.learning-course-heading p:last-child { font-size: 13px; line-height: 1.9; }
+.learning-path { min-width: 0; }
+.learning-lesson { position: relative; display: flex; flex-direction: column; gap: 12px; width: 100%; text-align: start; padding: 24px 64px 24px 20px; border-bottom: 1px solid var(--color-line); transition: background .15s; cursor: pointer; }
+.learning-lesson:last-child { border-bottom: 0; }
+.learning-lesson::before { content: ''; position: absolute; inset-inline-start: 25px; top: 56px; bottom: -24px; width: 1px; background: var(--color-line); }
+.learning-lesson:last-child::before { display: none; }
+.learning-step { position: absolute; inset-inline-start: 8px; top: 24px; width: 35px; height: 35px; display: grid; place-items: center; border: 1px solid var(--color-line); border-radius: 50%; color: var(--color-muted); background: var(--color-surface); font-size: 12px; font-weight: 700; }
+.learning-lesson[data-state='passed'] .learning-step, .learning-lesson[data-state='tried'] .learning-step { color: var(--color-brand); border-color: var(--color-brand); }
+.learning-lesson:not(:disabled):hover, .learning-review:hover { background: var(--color-surface-raised); }
+.learning-lesson:focus-visible, .learning-review:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 3px; }
+.learning-lesson:disabled { opacity: .6; cursor: not-allowed; }
+.learning-lesson > div:first-of-type > span:first-child { font-size: 16px; }
+.learning-lesson > p { font-size: 13px; line-height: 1.8; }
+/* محتوای ردیف پهن نمی‌شود: وضعیتِ «بعد از تکمیل درس قبلی» ۸۰۰ پیکسل دور از عنوانش می‌نشست. */
+.learning-lesson > div, .learning-lesson > p { max-width: 640px; }
+.learning-stages { max-width: 440px; }
+.learning-stages > * { border-radius: 0; background: transparent; border-width: 0 0 1px; }
+.learning-review { border-bottom: 1px solid var(--color-line); transition: background .15s; }
+.dna-introduction { padding-block: 24px 32px; border-block: 1px solid var(--color-line); }
+.dna-analysis { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 48px; padding-block: 36px; }
+.dna-radar { padding: 12px 0; min-width: 0; }
+.dna-metrics { min-width: 0; }
+.dna-metric { padding-block: 18px; border-bottom: 1px solid var(--color-line); }
+.dna-metric:last-child { border-bottom: 0; }
+.dna-trade-stats { padding-block: 12px 32px; }
+.dna-coach { padding: 28px; background: var(--color-surface-raised); border-inline-start: 3px solid var(--color-ai); margin-bottom: 40px; }
+.dna-monthly { border-top: 1px solid var(--color-line); padding-block: 32px; }
+.dna-monthly-heading h3 { font-size: 28px; line-height: 1.5; }
+.dna-scores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-block: 1px solid var(--color-line); }
+.dna-score { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 16px; padding: 24px; min-width: 0; }
+.dna-score + .dna-score { border-inline-start: 1px solid var(--color-line); }
+.dna-score > p { grid-column: 1 / -1; }
+.dna-score > div:nth-child(2) > p { font-size: 15px; }
+.dna-trend, .dna-detail { padding-block: 20px; border-bottom: 1px solid var(--color-line); }
+.dna-findings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; padding-block: 12px; }
+.dna-findings > div + div { border-inline-start: 1px solid var(--color-line); padding-inline-start: 32px; }
+.dna-findings p { font-size: 13px; line-height: 1.9; }
+@media (max-width: 1023px) {
+  .learning-progress { grid-template-columns: 1fr; gap: 20px; }
+  .learning-course { grid-template-columns: 1fr; gap: 16px; }
+  .learning-course-heading { position: static; }
+  .dna-analysis { gap: 24px; }
+  .dna-score { padding: 20px 12px; gap: 10px; }
+}
+@media (max-width: 639px) {
+  .learning-heading h2 { font-size: 24px; }
+  .learning-progress, .dna-coach { padding: 20px 16px; }
+  .learning-course { padding-block: 28px; }
+  .learning-lesson { padding: 20px 52px 20px 4px; }
+  .learning-step { inset-inline-start: 0; top: 20px; }
+  .learning-lesson::before { inset-inline-start: 17px; }
+  .dna-analysis, .dna-scores, .dna-findings { grid-template-columns: 1fr; }
+  .dna-score + .dna-score { border-inline-start: 0; border-top: 1px solid var(--color-line); }
+  .dna-score { grid-template-columns: 76px minmax(0, 1fr); padding: 20px 0; }
+  .dna-score > p { grid-column: 1 / -1; }
+  .dna-findings > div + div { border-inline-start: 0; border-top: 1px solid var(--color-line); padding-inline-start: 0; padding-top: 24px; }
+  .dna-coach { gap: 12px; }
+}
+
+
+/* Trading workspace: surrounding surfaces only; chart internals remain untouched. */
+.terminal-layout > * { min-width: 0; }
+.terminal-order-column { padding: 16px; background: var(--color-surface-raised); border-block: 1px solid var(--color-line); }
+.terminal-order-column > div:first-child { border: 0; border-radius: 0; }
+.terminal-ledger { border-block: 1px solid var(--color-line); }
+.terminal-ledger > div:first-child { background: transparent; gap: 24px; }
+.terminal-ledger > div:first-child button { font-size: 14px; min-height: 48px; }
+.terminal-ledger table { font-size: 13px; }
+.terminal-ledger th { white-space: nowrap; }
+.terminal-ledger td { padding-inline-end: 16px; }
+.arena-lobby > div:first-child h2 { font-size: 24px; }
+.arena-lobby > div:first-child > p { max-width: 780px; }
+.arena-lobby-layout { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 40px; align-items: start; padding-block: 8px 32px; }
+.arena-practice { padding: 24px; background: var(--color-surface-raised); border-top: 2px solid var(--color-brand); min-width: 0; }
+.arena-practice > div:first-child p:first-child { font-size: 18px; }
+.arena-practice > div:first-child p:last-child { font-size: 14px; line-height: 1.9; }
+.arena-practice select, .arena-practice input { min-height: 44px; font-size: 14px; min-width: 0; }
+.arena-practice button { min-height: 44px; font-size: 13px; }
+.arena-catalog { min-width: 0; }
+.arena-catalog > h3 { padding-bottom: 16px; border-bottom: 1px solid var(--color-line); }
+.arena-scenario-row { display: flex; flex-direction: column; gap: 12px; width: 100%; padding: 20px 12px; border-bottom: 1px solid var(--color-line); text-align: start; transition: background .15s; cursor: pointer; }
+.arena-scenario-row:hover:not(:disabled), .arena-resume:hover:not(:disabled) { background: var(--color-surface-raised); }
+.arena-scenario-row:disabled { opacity: .65; cursor: not-allowed; }
+.arena-scenario-row > p, .arena-scenario-row > div:last-child > span { font-size: 13px; line-height: 1.8; }
+.arena-scenario-row:focus-visible, .arena-resume:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+.arena-resume { border-bottom: 1px solid var(--color-line); text-align: start; }
+.arena-session-heading { border-bottom: 1px solid var(--color-line); padding-block: 12px; }
+.arena-session-stats { border-bottom: 1px solid var(--color-line); padding-block: 16px; }
+.arena-session-stats > * { padding-inline-end: 24px; }
+.arena-session-stats > * + * { border-inline-start: 1px solid var(--color-line); padding-inline-start: 24px; }
+.arena-order-panel { border-top: 2px solid var(--color-line-loud); background: var(--color-surface-raised); }
+@media (min-width: 1280px) {
+  .terminal-chart-column { flex: 1 1 0%; width: auto; }
+  .terminal-book-column { flex: 0 0 160px; width: 160px; }
+  .terminal-order-column { flex: 0 0 300px; width: 300px; }
+}
+@media (min-width: 1536px) {
+  .terminal-book-column { flex-basis: 180px; width: 180px; }
+  .terminal-order-column { flex-basis: 320px; width: 320px; }
+}
+@media (max-width: 767px) {
+  .arena-lobby-layout { grid-template-columns: 1fr; gap: 32px; }
+  .arena-practice { padding: 20px 16px; }
+  .arena-session-stats { gap: 16px 24px; }
+  .arena-session-stats > *, .arena-session-stats > * + * { border: 0; padding-inline: 0; }
+  .terminal-order-column { padding: 16px 12px; }
+}
+
+/* Focused coaching workspace and a shared plan-comparison surface. */
+.mentor-page { max-width: 1040px; }
+.mentor-heading, .pricing-heading { padding-block: 8px 32px; max-width: 760px; }
+.mentor-memory { padding-block: 24px; border-top: 1px solid var(--color-line); display: grid; gap: 20px; }
+.mentor-patterns > div { background: transparent; border-radius: 0; }
+.mentor-patterns > div > div:last-child { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 20px; }
+.mentor-patterns > div > div:last-child > div { background: transparent; border: 0; border-bottom: 1px solid var(--color-line); border-radius: 0; margin-top: 0; padding-block: 16px; }
+.mentor-patterns p { font-size: 13px; line-height: 1.8; }
+.mentor-conversation { border-top: 1px solid var(--color-line); }
+.mentor-chat-heading { padding-block: 20px; }
+.mentor-messages { min-height: 320px; max-height: 65vh; overflow-y: auto; padding: 24px 16px; scrollbar-gutter: stable; }
+.mentor-welcome { max-width: 680px; margin-inline: auto; padding-block: 16px 32px; }
+.mentor-starters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+.mentor-starter { text-align: start; padding: 18px 8px; border-bottom: 1px solid var(--color-line); color: var(--color-ink-2); font-size: 13px; line-height: 1.8; transition: background .15s; cursor: pointer; }
+.mentor-starter:hover { background: var(--color-surface-raised); color: var(--color-ink); }
+.mentor-starter:disabled { opacity: .5; cursor: not-allowed; }
+.mentor-user-message { max-width: 85%; padding: 16px 20px; background: var(--color-surface-raised); border-inline-start: 2px solid var(--color-brand); border-radius: 12px 12px 2px 12px; color: var(--color-ink); font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
+.mentor-composer { display: flex; gap: 12px; padding: 12px; margin-top: 20px; background: var(--color-surface-raised); border: 1px solid var(--color-line); border-radius: 16px; }
+.mentor-input { min-width: 0; flex: 1; background: transparent; padding-inline: 12px; color: var(--color-ink); font-size: 14px; }
+.mentor-input:focus-visible { outline-offset: 4px; }
+.pricing-comparison { display: grid; border-block: 1px solid var(--color-line); }
+.pricing-tier { display: grid; grid-template-rows: subgrid; grid-row: span 5; gap: 24px; padding: 24px; min-width: 0; border-inline-start-width: 1px; }
+.pricing-tier:first-child { border-inline-start: 0; }
+.pricing-tier[data-featured='true'] { background: var(--color-surface-raised); box-shadow: inset 0 3px var(--color-brand); }
+.pricing-badge { min-height: 24px; color: var(--color-brand); font-size: 12px; font-weight: 700; }
+.pricing-tier > div:nth-child(2) p:first-child { font-size: 20px; }
+.pricing-tier > div:nth-child(2) p:last-child { font-size: 12px; margin-top: 4px; }
+.pricing-price { font-size: clamp(24px, 3vw, 36px); }
+.pricing-features { display: grid; align-content: start; gap: 16px; padding-block: 8px; }
+.pricing-features svg { margin-top: 7px; }
+.pricing-tier > button { align-self: end; min-height: 48px; font-size: 13px; }
+.pricing-tier[data-featured='true'] > button { background: var(--color-brand); color: var(--color-surface); border-color: var(--color-brand); }
+.pricing-tier[data-featured='true'] > button:hover { background: var(--color-brand-soft); }
+.pricing-note { padding-block: 24px 40px; max-width: 900px; }
+.pricing-faq { display: grid; grid-template-columns: minmax(160px, .6fr) minmax(0, 2fr); gap: 32px; padding-block: 24px; border-top: 1px solid var(--color-line); }
+.pricing-faq > h3 { font-size: 20px; align-items: flex-start; padding-top: 12px; }
+.pricing-faq-row { border-bottom: 1px solid var(--color-line); }
+.pricing-faq-row button { min-height: 56px; }
+.pricing-faq-row button > span { font-size: 14px; line-height: 1.8; }
+
+/* Personal workspace: open sections, with a single performance strip. */
+.account-page { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); column-gap: 56px; }
+.account-heading, .account-identity, .account-performance { grid-column: 1 / -1; }
+.account-identity { padding: 24px 0; border-top: 1px solid var(--color-line); }
+.account-performance { grid-row: 3; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid var(--color-line); margin-bottom: 8px; }
+.account-stat { padding: 22px 24px; text-align: start; }
+.account-stat + .account-stat { border-inline-start: 1px solid var(--color-line); }
+.account-stat [dir="ltr"] { text-align: start; direction: ltr; width: fit-content; }
+.account-section { min-width: 0; padding: 28px 0; border-bottom: 1px solid var(--color-line); }
+.account-details { grid-column: 1; grid-row: 4 / 6; }
+.account-avatars { grid-column: 2; grid-row: 4; }
+.account-settings { grid-column: 2; grid-row: 5; }
+.account-sensitive { grid-column: 1 / -1; max-width: 680px; padding-top: 32px; }
+.account-page button:focus-visible, .auth-panel button:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 4px; }
+.auth-panel { border: 1px solid var(--color-line); border-top: 2px solid var(--color-brand); border-radius: 16px; background: var(--color-surface-raised); padding: 28px; box-shadow: 0 24px 64px rgb(0 0 0 / 18%); }
+.auth-steps { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.auth-steps li { display: flex; gap: 8px; padding-bottom: 12px; border-bottom: 2px solid var(--color-line); color: var(--color-muted); font-size: 12px; }
+.auth-steps li span { font-variant-numeric: tabular-nums; }
+.auth-steps .is-current { color: var(--color-brand); border-color: var(--color-brand); font-weight: 700; }
+.auth-steps .is-complete { color: var(--color-ink-2); border-color: var(--color-brand); }
+.hugo-stage { position: relative; max-width: 440px; margin-inline: auto; padding: 0 16px 40px; background: radial-gradient(ellipse at 50% 46%, color-mix(in srgb, var(--color-brand) 13%, transparent), transparent 65%); }
+.hugo-stage-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.hugo-motion-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 8px; border-radius: 8px; font-size: 12px; color: var(--color-muted); }
+.hugo-motion-toggle:hover { color: var(--color-ink); background: var(--color-surface-raised); }
+.hugo-stage-character { position: relative; display: flex; justify-content: center; perspective: 900px; padding-block: 8px; }
+.hugo-ground-shadow { position: absolute; bottom: 12px; left: 50%; width: 100px; height: 12px; transform: translateX(-50%); border-radius: 50%; background: rgb(0 0 0 / 30%); filter: blur(8px); }
+.hugo-stage-speech { position: relative; border-inline-start: 2px solid var(--color-ai); padding-inline-start: 16px; min-height: 76px; margin-top: 8px; }
+@media (max-width: 767px) {
+  .account-page { display: flex; flex-direction: column; }
+  .account-heading { order: 0; }
+  .account-identity { order: 1; }
+  .account-performance { order: 2; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .account-details { order: 3; }
+  .account-avatars { order: 4; }
+  .account-settings { order: 5; }
+  .account-sensitive { order: 6; }
+  .account-stat { padding: 18px 12px; }
+  .account-stat:nth-child(3) { border-inline-start: 0; }
+  .account-stat:nth-child(n+3) { border-top: 1px solid var(--color-line); }
+  .account-section { padding-block: 24px; }
+  .account-details input { font-size: 16px; }
+  .auth-panel { padding: 24px 20px; }
+}
+@media (max-width: 639px) {
+  .mentor-heading h2 { font-size: 26px; }
+  .mentor-messages { padding-inline: 0; max-height: 70vh; }
+  .mentor-starters { grid-template-columns: 1fr; }
+  .mentor-input { padding-inline: 4px; font-size: 16px; }
+  .mentor-composer { gap: 8px; }
+  .pricing-comparison { grid-template-columns: 1fr !important; }
+  .pricing-tier { grid-row: auto; grid-template-rows: auto; gap: 20px; border-inline-start: 0; border-bottom: 1px solid var(--color-line); padding: 24px 16px; }
+  .pricing-badge:empty { display: none; }
+  .pricing-faq { grid-template-columns: 1fr; gap: 8px; }
+}
